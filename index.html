@@ -16,6 +16,7 @@
             100% { transform: scale(1); opacity: 1; }
         }
         .bg-chiral { background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%); }
+        .node-card { transition: all 0.3s ease; }
     </style>
 </head>
 <body class="bg-chiral min-h-screen flex flex-col items-center p-4">
@@ -58,6 +59,15 @@
             </div>
         </div>
 
+        <!-- Status dos Nós (Radar) -->
+        <div class="col-span-1 md:col-span-2 bg-gray-900 border border-gray-700 p-4 rounded-lg shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+            <h2 class="text-center text-gray-400 mb-4 text-sm border-b border-gray-800 pb-2">RADAR DE NÓS (QUIRAL NETWORK)</h2>
+            <div id="nodes-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <!-- Os nós serão injetados aqui via JavaScript -->
+                <div class="text-center text-gray-600 col-span-full text-xs">Aguardando telemetria dos nós...</div>
+            </div>
+        </div>
+
         <!-- System Logs / Info -->
         <div class="col-span-1 md:col-span-2 bg-black border border-gray-800 p-4 rounded-lg">
             <h2 class="text-gray-500 text-sm mb-2 border-b border-gray-800 pb-1">UPLINK STATUS</h2>
@@ -69,7 +79,7 @@
 
     </main>
 
-    <footer class="mt-8 text-gray-600 text-xs text-center">
+    <footer class="mt-8 text-gray-600 text-xs text-center pb-8">
         Desenvolvido para Operações Táticas de Airsoft<br>
         Atualização automática (3s)
     </footer>
@@ -87,14 +97,16 @@
                 if (data) {
                     const timestamp = new Date().toLocaleTimeString();
 
-                    // Atualiza a Interface
+                    // Atualiza a Interface de Pontuação
                     document.getElementById('score-azul').innerText = data.az !== undefined ? data.az : "0";
                     document.getElementById('score-amarelo').innerText = data.am !== undefined ? data.am : "0";
                     document.getElementById('game-time').innerText = data.tp || "00:00";
-                    document.getElementById('game-mode').innerText = "MODO: " + (data.md || "QUIRAL");
+                    
+                    const modoAtual = data.md || "QUIRAL";
+                    document.getElementById('game-mode').innerText = "MODO: " + modoAtual;
                     document.getElementById('last-update').innerText = timestamp;
 
-                    // Atualiza Status
+                    // Atualiza Status do Jogo
                     const statusBadge = document.getElementById('status-badge');
                     if (data.st === "ON") {
                         statusBadge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO";
@@ -102,6 +114,62 @@
                     } else {
                         statusBadge.innerText = "SISTEMA OCIOSO / PAUSADO";
                         statusBadge.className = "mt-4 inline-block px-4 py-1 rounded-full text-sm font-bold bg-gray-800 text-gray-400 border border-gray-600";
+                    }
+
+                    // Atualiza o Radar de Nós
+                    if (data.nos && Array.isArray(data.nos)) {
+                        const nodesGrid = document.getElementById('nodes-grid');
+                        nodesGrid.innerHTML = ''; // Limpa a grelha
+
+                        data.nos.forEach((node, index) => {
+                            const idStr = (index + 1).toString().padStart(2, '0');
+                            let statusText = "OFFLINE";
+                            let bgColor = "bg-gray-800";
+                            let borderColor = "border-gray-700";
+                            let textColor = "text-gray-500";
+
+                            if (node.online) {
+                                if (modoAtual === "QUIRAL") {
+                                    // Modo Quiral: Apenas Ativo ou Inativo (sem mostrar o cooldown)
+                                    if (node.ativo) {
+                                        statusText = "ATIVO";
+                                        bgColor = "bg-green-900/30";
+                                        borderColor = "border-green-600";
+                                        textColor = "text-green-400";
+                                    } else {
+                                        statusText = "INATIVO";
+                                        bgColor = "bg-red-900/30";
+                                        borderColor = "border-red-600";
+                                        textColor = "text-red-400";
+                                    }
+                                } else {
+                                    // Outros Modos (Conquista/Dominação): Mostra o Dono
+                                    if (node.owner === 1) {
+                                        statusText = "AZUL";
+                                        bgColor = "bg-blue-900/30";
+                                        borderColor = "border-blue-500";
+                                        textColor = "text-blue-400";
+                                    } else if (node.owner === 2) {
+                                        statusText = "AMARELA";
+                                        bgColor = "bg-yellow-900/30";
+                                        borderColor = "border-yellow-500";
+                                        textColor = "text-yellow-400";
+                                    } else {
+                                        statusText = "NEUTRO";
+                                        bgColor = "bg-gray-700/50";
+                                        borderColor = "border-gray-500";
+                                        textColor = "text-gray-300";
+                                    }
+                                }
+                            }
+
+                            nodesGrid.innerHTML += `
+                                <div class="node-card p-3 rounded-lg border ${bgColor} ${borderColor} text-center">
+                                    <div class="text-xs text-gray-400 mb-1">NÓ ${idStr}</div>
+                                    <div class="font-bold text-sm ${textColor}">${statusText}</div>
+                                </div>
+                            `;
+                        });
                     }
                 }
             } catch (error) {
