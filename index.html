@@ -27,11 +27,24 @@
 <body class="bg-chiral min-h-screen p-2 md:p-4">
 
     <!-- Caixa de Mensagem Modal (Substitui os alerts) -->
-    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center shadow-2xl max-w-sm mx-4">
             <h3 class="text-xl text-yellow-500 mb-2 font-bold">AVISO TÁTICO</h3>
             <p id="modal-text" class="text-gray-300 mb-4">Mensagem</p>
             <button onclick="closeModal()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-500">ENTENDIDO</button>
+        </div>
+    </div>
+
+    <!-- Admin Login Modal -->
+    <div id="admin-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
+            <h3 class="text-xl text-red-500 mb-4 font-bold text-center">ACESSO RESTRITO</h3>
+            <input type="text" id="admin-user" placeholder="Usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-blue-500 focus:outline-none">
+            <input type="password" id="admin-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-blue-500 focus:outline-none">
+            <div class="flex justify-between">
+                <button onclick="closeAdminModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">CANCELAR</button>
+                <button onclick="authenticateAdmin()" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded font-bold border border-blue-600">ENTRAR</button>
+            </div>
         </div>
     </div>
 
@@ -74,22 +87,28 @@
             <div class="bg-gray-900/80 border border-gray-700 p-2 md:p-4 rounded-lg shadow-lg">
                 <div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
                     <h2 class="text-sm md:text-base text-gray-400 font-bold">MAPA TÁTICO</h2>
-                    <label class="cursor-pointer bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
-                        IMPORTAR MAPA
-                        <input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden">
-                    </label>
+                    <div class="flex gap-2">
+                        <button id="btn-admin" onclick="openAdminModal()" class="bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
+                            ADMIN
+                        </button>
+                        <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">
+                            IMPORTAR MAPA
+                            <input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden">
+                        </label>
+                    </div>
                 </div>
                 
-                <!-- Área do Mapa -->
-                <div id="map-container" class="relative w-full aspect-[4/3] md:aspect-[16/9] bg-black border border-gray-800 rounded overflow-hidden touch-none select-none">
-                    <img id="map-bg" class="w-full h-full object-cover hidden pointer-events-none" alt="Mapa do Campo">
+                <!-- Área do Mapa (Proporção Dinâmica) -->
+                <!-- Removemos o aspect-ratio fixo do Tailwind para ser controlado pelo JS -->
+                <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
+                    <img id="map-bg" class="absolute inset-0 w-full h-full hidden pointer-events-none" alt="Mapa do Campo">
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none">
-                        Carregue uma imagem do terreno...
+                        Aguardando mapa... (Faça login Admin)
                     </div>
                     <!-- Os Nós do mapa serão gerados via JS -->
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
-                <p class="text-[10px] text-gray-500 mt-2 text-center">Arraste os marcadores para as posições reais no terreno. A posição fica salva.</p>
+                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição: Arraste os marcadores para as posições reais no terreno. A posição fica salva.</p>
             </div>
             
             <!-- Radar Clássico (Grelha) -->
@@ -134,6 +153,9 @@
         let lastNodesData = null;
         let gameModeCache = "QUIRAL";
 
+        // Admin State
+        let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+
         // =====================================
         // CAIXA DE MENSAGENS (MODAL)
         // =====================================
@@ -148,6 +170,69 @@
             m.classList.add('opacity-0');
             setTimeout(() => m.classList.add('hidden'), 300);
         }
+
+        // =====================================
+        // SISTEMA DE LOGIN ADMIN
+        // =====================================
+        function checkAdminState() {
+            const btnAdmin = document.getElementById('btn-admin');
+            const btnUpload = document.getElementById('btn-upload');
+            const adminHint = document.getElementById('admin-hint');
+
+            if (isAdmin) {
+                btnAdmin.classList.add('hidden');
+                btnUpload.classList.remove('hidden');
+                adminHint.classList.remove('hidden');
+            } else {
+                btnAdmin.classList.remove('hidden');
+                btnUpload.classList.add('hidden');
+                adminHint.classList.add('hidden');
+            }
+
+            // Atualiza cursores no mapa
+            mapNodes.forEach(node => {
+                if (isAdmin) {
+                    node.classList.add('cursor-move');
+                } else {
+                    node.classList.remove('cursor-move');
+                }
+            });
+        }
+
+        function openAdminModal() {
+            const m = document.getElementById('admin-modal');
+            m.classList.remove('hidden');
+            setTimeout(() => m.classList.remove('opacity-0'), 10);
+        }
+
+        function closeAdminModal() {
+            const m = document.getElementById('admin-modal');
+            m.classList.add('opacity-0');
+            document.getElementById('admin-pass').value = ''; // limpa senha
+            setTimeout(() => m.classList.add('hidden'), 300);
+        }
+
+        function authenticateAdmin() {
+            const u = document.getElementById('admin-user').value;
+            const p = document.getElementById('admin-pass').value;
+            
+            if (u === 'quiral' && p === 'felipe123') {
+                isAdmin = true;
+                sessionStorage.setItem('isAdmin', 'true');
+                checkAdminState();
+                closeAdminModal();
+                showModal("Acesso Restrito concedido. Ferramentas de edição de mapa ativadas.");
+            } else {
+                showModal("Credenciais incorretas. Acesso negado.");
+            }
+        }
+
+        // Permite usar a tecla Enter para login
+        document.getElementById('admin-pass').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                authenticateAdmin();
+            }
+        });
 
         // =====================================
         // SISTEMA DE LOGS TÁTICOS
@@ -177,23 +262,36 @@
         // =====================================
         const mapNodes = [];
         
+        function applyMapImage(base64Data) {
+            const imgEl = document.getElementById('map-bg');
+            const container = document.getElementById('map-container');
+            
+            // Cria imagem fantasma para ler proporções (Aspect Ratio Dinâmico)
+            const tempImg = new Image();
+            tempImg.onload = function() {
+                container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
+                imgEl.src = base64Data;
+                imgEl.classList.remove('hidden');
+                document.getElementById('map-placeholder').classList.add('hidden');
+            };
+            tempImg.src = base64Data;
+        }
+
         function initMap() {
             const layer = document.getElementById('map-nodes-layer');
             const savedPositions = JSON.parse(localStorage.getItem('quiralMapPositions') || '{}');
             const savedImage = localStorage.getItem('quiralMapImage');
 
-            // Carrega imagem se existir
+            // Carrega imagem se existir e aplica Aspect Ratio
             if (savedImage) {
-                document.getElementById('map-bg').src = savedImage;
-                document.getElementById('map-bg').classList.remove('hidden');
-                document.getElementById('map-placeholder').classList.add('hidden');
+                applyMapImage(savedImage);
             }
 
             // Cria os 10 marcadores
             for(let i=1; i<=10; i++) {
                 const nodeEl = document.createElement('div');
                 nodeEl.id = `map-node-${i}`;
-                nodeEl.className = "map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs cursor-move touch-none bg-gray-800 border-gray-600 text-gray-400 z-10 select-none";
+                nodeEl.className = "map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none bg-gray-800 border-gray-600 text-gray-400 z-10 select-none";
                 nodeEl.innerText = i;
                 
                 // Posição inicial (salva ou calculada)
@@ -209,6 +307,8 @@
                 mapNodes.push(nodeEl);
                 makeDraggable(nodeEl, i);
             }
+
+            checkAdminState(); // Verifica se cursores devem ser de arrasto
         }
 
         function savePositions() {
@@ -223,6 +323,7 @@
             let isDragging = false;
             
             const startDrag = (e) => {
+                if (!isAdmin) return; // BLOQUEIO ADMIN
                 if (e.target !== el) return;
                 isDragging = true;
                 e.preventDefault(); // Evita scroll ao tocar no nó
@@ -280,9 +381,7 @@
                 const base64 = event.target.result;
                 try {
                     localStorage.setItem('quiralMapImage', base64);
-                    document.getElementById('map-bg').src = base64;
-                    document.getElementById('map-bg').classList.remove('hidden');
-                    document.getElementById('map-placeholder').classList.add('hidden');
+                    applyMapImage(base64); // Aplica a imagem e ajusta as proporções dinâmicas
                 } catch (err) {
                     showModal("Erro ao guardar o mapa. A memória do navegador pode estar cheia.");
                 }
@@ -345,7 +444,9 @@
                 // Atualiza Nó no Mapa
                 const mapNode = document.getElementById(`map-node-${id}`);
                 if (mapNode) {
-                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs cursor-move touch-none z-10 select-none ${cssClass}`;
+                    // Manter classes de movimento dinâmicas
+                    const cursorClass = isAdmin ? 'cursor-move' : '';
+                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none z-10 select-none ${cursorClass} ${cssClass}`;
                 }
 
                 // Renderiza Mini Grid (Radar Clássico)
