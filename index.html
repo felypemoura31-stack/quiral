@@ -15,7 +15,6 @@
         .log-container::-webkit-scrollbar { width: 6px; }
         .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         
-        /* Estilos do Mapa Tático */
         .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; }
         .map-node.active-blue { background-color: rgba(59, 130, 246, 0.8); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; color: #fff; }
         .map-node.active-yellow { background-color: rgba(234, 179, 8, 0.8); border-color: #fde047; box-shadow: 0 0 15px #eab308; color: #000; }
@@ -119,18 +118,19 @@
             </div>
         </div>
 
-        <!-- COLUNA DIREITA: Registo de Combate (Logs) -->
+        <!-- COLUNA DIREITA: Registo de Combate (Logs na Nuvem) -->
         <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] lg:h-auto">
-            <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg">
+            <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
                 <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
                     REGISTO DE COMBATE
                 </h2>
+                <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
             </div>
             
             <!-- Contentor de Logs -->
             <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans">
-                <div class="text-gray-500 text-center italic mt-10">Aguardando telemetria inicial...</div>
+                <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
             </div>
             
             <!-- Footer Info -->
@@ -147,7 +147,8 @@
         // VARIÁVEIS GLOBAIS E CONFIGURAÇÕES
         // =====================================
         const FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
-        const MAP_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json"; // <--- Novo Banco de Dados do Mapa
+        const MAP_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json"; 
+        const LOGS_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs.json"; // <--- Novo Banco de Logs
         
         let lastGameState = null;
         let lastNodesData = null;
@@ -189,13 +190,9 @@
                 adminHint.classList.add('hidden');
             }
 
-            // Atualiza cursores no mapa
             mapNodes.forEach(node => {
-                if (isAdmin) {
-                    node.classList.add('cursor-move');
-                } else {
-                    node.classList.remove('cursor-move');
-                }
+                if (isAdmin) { node.classList.add('cursor-move'); } 
+                else { node.classList.remove('cursor-move'); }
             });
         }
 
@@ -208,7 +205,7 @@
         function closeAdminModal() {
             const m = document.getElementById('admin-modal');
             m.classList.add('opacity-0');
-            document.getElementById('admin-pass').value = ''; // limpa senha
+            document.getElementById('admin-pass').value = '';
             setTimeout(() => m.classList.add('hidden'), 300);
         }
 
@@ -228,29 +225,56 @@
         }
 
         document.getElementById('admin-pass').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                authenticateAdmin();
-            }
+            if (e.key === 'Enter') authenticateAdmin();
         });
 
         // =====================================
-        // SISTEMA DE LOGS TÁTICOS
+        // SISTEMA DE LOGS NA NUVEM (NOVO)
         // =====================================
-        function addLog(htmlMessage) {
-            const box = document.getElementById('log-box');
+        
+        // Grava um evento de combate na nuvem
+        async function saveLogToCloud(logId, htmlMessage) {
             const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
-            
-            if (box.innerText.includes("Aguardando")) box.innerHTML = '';
+            // O 'ts' (timestamp) garante a ordenação perfeita de quando o evento ocorreu
+            const logEntry = { t: time, m: htmlMessage, ts: Date.now() };
+            try {
+                await fetch(`https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs/${logId}.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify(logEntry)
+                });
+            } catch(e) { console.error("Erro ao guardar log", e); }
+        }
 
-            const entry = document.createElement('div');
-            entry.className = "border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r animate-fade-in";
-            entry.innerHTML = `<span class="text-gray-500 font-mono">[${time}]</span> ${htmlMessage}`;
-            
-            box.prepend(entry);
-
-            if (box.children.length > 50) {
-                box.removeChild(box.lastChild);
+        let isFetchingLogs = false;
+        
+        // Puxa o histórico de combate da nuvem e exibe na tela
+        async function fetchCloudLogs() {
+            if (isFetchingLogs) return;
+            isFetchingLogs = true;
+            try {
+                const res = await fetch(LOGS_DB_URL + "?nocache=" + Date.now());
+                const data = await res.json();
+                const box = document.getElementById('log-box');
+                
+                if (!data) {
+                    box.innerHTML = '<div class="text-gray-500 text-center italic mt-10">Nenhum registo de combate atual.</div>';
+                } else {
+                    // Transforma o objeto do Firebase num Array e ordena do mais recente para o mais antigo
+                    const logsArray = Object.values(data).sort((a, b) => b.ts - a.ts);
+                    box.innerHTML = '';
+                    
+                    // Exibe apenas os últimos 60 registos
+                    logsArray.slice(0, 60).forEach(log => {
+                        const entry = document.createElement('div');
+                        entry.className = "border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r mb-2 animate-fade-in";
+                        entry.innerHTML = `<span class="text-gray-500 font-mono">[${log.t}]</span> ${log.m}`;
+                        box.appendChild(entry);
+                    });
+                }
+            } catch (e) {
+                console.error("Erro ao buscar logs da nuvem", e);
             }
+            isFetchingLogs = false;
         }
 
         // =====================================
@@ -262,7 +286,6 @@
             const imgEl = document.getElementById('map-bg');
             const container = document.getElementById('map-container');
             
-            // Calcula dinamicamente o Aspect Ratio e tira as bordas pretas!
             const tempImg = new Image();
             tempImg.onload = function() {
                 container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
@@ -278,7 +301,6 @@
             let savedPositions = {};
             let savedImage = null;
 
-            // Busca os dados mestre do Firebase
             try {
                 const res = await fetch(MAP_DB_URL + "?nocache=" + new Date().getTime());
                 const data = await res.json();
@@ -286,13 +308,10 @@
                     savedPositions = data.positions || {};
                     savedImage = data.image || null;
                 }
-            } catch (err) {
-                console.warn("Nenhum mapa encontrado no servidor. Usando layout vazio.");
-            }
+            } catch (err) { console.warn("Nenhum mapa encontrado no servidor."); }
 
             if (savedImage) applyMapImage(savedImage);
 
-            // Cria os 10 marcadores baseados na nuvem
             for(let i=1; i<=10; i++) {
                 const nodeEl = document.createElement('div');
                 nodeEl.id = `map-node-${i}`;
@@ -320,24 +339,20 @@
             mapNodes.forEach((el, index) => {
                 pos[index + 1] = { x: el.style.left, y: el.style.top };
             });
-            
-            // Grava diretamente na nuvem (Firebase)
             try {
                 await fetch(MAP_DB_URL, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ positions: pos })
                 });
-            } catch (err) {
-                console.error("Erro ao sincronizar posições com a nuvem.");
-            }
+            } catch (err) {}
         }
 
         function makeDraggable(el, id) {
             let isDragging = false;
             
             const startDrag = (e) => {
-                if (!isAdmin) return; // BLOQUEIO ADMIN
+                if (!isAdmin) return; 
                 if (e.target !== el) return;
                 isDragging = true;
                 e.preventDefault(); 
@@ -358,7 +373,6 @@
                 x = Math.max(0, Math.min(x, rect.width));
                 y = Math.max(0, Math.min(y, rect.height));
                 
-                // Grava a coordenada sempre em percentagem para se adaptar a qualquer ecrã!
                 el.style.left = `${(x / rect.width) * 100}%`;
                 el.style.top = `${(y / rect.height) * 100}%`;
             };
@@ -366,7 +380,7 @@
             const endDrag = () => {
                 if (isDragging) {
                     isDragging = false;
-                    savePositions(); // Atualiza a nuvem ao soltar
+                    savePositions();
                 }
             };
 
@@ -380,21 +394,15 @@
             document.addEventListener('touchend', endDrag);
         }
 
-        // Upload de Imagem do Mapa para a NUVEM
         document.getElementById('map-upload').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
-            
-            if (file.size > 2 * 1024 * 1024) {
-                showModal("Imagem demasiado grande. Por favor, use um mapa com menos de 2MB.");
-                return;
-            }
+            if (file.size > 2 * 1024 * 1024) { showModal("Imagem demasiado grande. Use menos de 2MB."); return; }
 
             const reader = new FileReader();
             reader.onload = async function(event) {
                 const base64 = event.target.result;
-                applyMapImage(base64); // Mostra logo na tela para o user
-                
+                applyMapImage(base64); 
                 showModal("A sincronizar mapa com a Sala de Guerra na Nuvem... Aguarde.");
                 try {
                     await fetch(MAP_DB_URL, {
@@ -403,17 +411,15 @@
                         body: JSON.stringify({ image: base64 })
                     });
                     showModal("Sincronização Concluída! Todos os dispositivos estão a ver este mapa.");
-                } catch (err) {
-                    showModal("Erro ao guardar o mapa no servidor.");
-                }
+                } catch (err) { showModal("Erro ao guardar o mapa no servidor."); }
             };
             reader.readAsDataURL(file);
         });
 
         // =====================================
-        // ANÁLISE DE DADOS E LÓGICA DE INTERFACE
+        // ANÁLISE DE DADOS E GERAÇÃO DE EVENTOS
         // =====================================
-        function analisarLogs(newData) {
+        function analisarMudancasParaLogs(newData) {
             if (!lastNodesData) return; 
             const isQuiral = newData.md === "QUIRAL";
 
@@ -422,16 +428,22 @@
                 if (!prev) return;
                 
                 const id = i + 1;
+                let logMsg = null;
+                // Cria um ID único no Firebase usando o Tempo da Partida e o ID do Nó
+                let logIdUnico = `t${newData.tp.replace(':','')}_n${id}`;
                 
                 if (node.owner !== prev.owner && node.online) {
-                    if (node.owner === 1) addLog(`Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
-                    else if (node.owner === 2) addLog(`Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
-                    else if (node.owner === 0 && prev.owner !== 0) addLog(`Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`);
+                    if (node.owner === 1) { logMsg = `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`; logIdUnico += "_azul"; }
+                    else if (node.owner === 2) { logMsg = `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`; logIdUnico += "_amarelo"; }
+                    else if (node.owner === 0 && prev.owner !== 0) { logMsg = `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`; logIdUnico += "_neutro"; }
                 }
 
                 if (isQuiral && node.ativo !== prev.ativo && node.online) {
-                    if (node.ativo) addLog(`Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
+                    if (node.ativo) { logMsg = `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`; logIdUnico += "_reativado"; }
                 }
+
+                // Se gerou uma ação importante, envia diretamente para o Firebase Log!
+                if (logMsg) saveLogToCloud(logIdUnico, logMsg);
             });
         }
 
@@ -456,14 +468,12 @@
                     }
                 }
 
-                // Atualiza Nó no Mapa
                 const mapNode = document.getElementById(`map-node-${id}`);
                 if (mapNode) {
                     const cursorClass = isAdmin ? 'cursor-move' : '';
                     mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none z-10 select-none ${cursorClass} ${cssClass}`;
                 }
 
-                // Renderiza Mini Grid
                 miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
             });
         }
@@ -486,24 +496,32 @@
                     document.getElementById('game-mode').innerText = "MODO: " + gameModeCache;
 
                     const badge = document.getElementById('status-badge');
+                    
+                    // Transição Mestre e Auto-Limpeza de Logs na Nuvem
                     if (isPlaying) {
                         badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO";
                         badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse";
                         
-                        if (lastGameState === "OFF" || lastGameState === null) {
-                            addLog(`<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Jogo Iniciado!`);
+                        if (lastGameState === "OFF") {
+                            // Quando o jogo começa do zero, substituímos todos os logs pelo Log Mestre Inicial!
+                            const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
+                            const startLog = { t: time, m: `<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!`, ts: Date.now() };
+                            fetch(LOGS_DB_URL, {
+                                method: 'PUT',
+                                body: JSON.stringify({ sys_start: startLog })
+                            });
                         }
                     } else {
                         badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO";
                         badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600";
                         
                         if (lastGameState === "ON") {
-                            addLog(`<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Central Ociosa.`);
+                            saveLogToCloud("sys_stop", `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Central Ociosa.`);
                         }
                     }
 
                     if (data.nos && Array.isArray(data.nos)) {
-                        if (isPlaying) analisarLogs(data);
+                        if (isPlaying) analisarMudancasParaLogs(data); 
                         renderVisuals(data);
                         lastNodesData = JSON.parse(JSON.stringify(data.nos)); 
                     }
@@ -522,7 +540,9 @@
         // =====================================
         initMap();
         fetchUplinkData();
-        setInterval(fetchUplinkData, 2000);
+        fetchCloudLogs(); // Busca os logs iniciais
+        setInterval(fetchUplinkData, 2000); 
+        setInterval(fetchCloudLogs, 2500);  // Atualiza a vista de logs constantemente
     </script>
 </body>
 </html>
