@@ -15,6 +15,7 @@
         .log-container::-webkit-scrollbar { width: 6px; }
         .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         
+        /* Estilos do Mapa Tático */
         .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; }
         .map-node.active-blue { background-color: rgba(59, 130, 246, 0.8); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; color: #fff; }
         .map-node.active-yellow { background-color: rgba(234, 179, 8, 0.8); border-color: #fde047; box-shadow: 0 0 15px #eab308; color: #000; }
@@ -47,7 +48,6 @@
         </div>
     </div>
 
-    <!-- Header -->
     <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4">
         <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider">[ COMANDO QUIRAL ]</h1>
         <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">
@@ -55,26 +55,20 @@
         </div>
     </header>
 
-    <!-- Main Dashboard -->
     <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         
-        <!-- COLUNA ESQUERDA: Placar e Mapa -->
         <div class="lg:col-span-2 space-y-4 md:space-y-6">
-            
             <!-- Placar -->
             <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg shadow-lg relative overflow-hidden">
                 <div class="flex justify-between items-center relative z-10">
-                    <!-- Azul -->
                     <div class="text-center w-1/3">
                         <h3 class="text-lg md:text-xl text-blue-500 font-bold mb-1">AZUL</h3>
                         <div id="score-azul" class="text-4xl md:text-6xl font-bold text-blue-400 neon-text">0</div>
                     </div>
-                    <!-- Timer -->
                     <div class="text-center w-1/3">
                         <div id="game-time" class="text-2xl md:text-4xl font-bold text-white tracking-widest">00:00</div>
                         <p id="game-mode" class="text-gray-400 text-xs md:text-sm mt-1">MODO: --</p>
                     </div>
-                    <!-- Amarelo -->
                     <div class="text-center w-1/3">
                         <h3 class="text-lg md:text-xl text-yellow-500 font-bold mb-1">AMARELA</h3>
                         <div id="score-amarelo" class="text-4xl md:text-6xl font-bold text-yellow-400" style="text-shadow: 0 0 10px #a60;">0</div>
@@ -97,28 +91,24 @@
                     </div>
                 </div>
                 
-                <!-- Área do Mapa (Proporção Dinâmica) -->
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
                     <img id="map-bg" class="absolute inset-0 w-full h-full hidden pointer-events-none" alt="Mapa do Campo">
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none">
                         Aguardando sincronização de mapa da nuvem...
                     </div>
-                    <!-- Os Nós do mapa serão gerados via JS -->
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
-                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: O mapa e as posições são sincronizados com a nuvem automaticamente.</p>
+                <p id="admin-hint" class="text-[10px] text-green-500 mt-2 text-center hidden">Modo Admin Ativo: Alterações no mapa são salvas na Nuvem automaticamente.</p>
             </div>
             
-            <!-- Radar Clássico (Grelha) -->
+            <!-- Radar Clássico -->
             <div class="bg-gray-900/50 border border-gray-800 p-3 rounded-lg">
                 <h2 class="text-xs text-gray-500 mb-2 font-bold text-center">RADAR CLÁSSICO</h2>
-                <div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2">
-                    <!-- Mini grelha via JS -->
-                </div>
+                <div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2"></div>
             </div>
         </div>
 
-        <!-- COLUNA DIREITA: Registo de Combate (Logs na Nuvem) -->
+        <!-- Registo de Combate -->
         <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] lg:h-auto">
             <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
                 <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
@@ -128,12 +118,10 @@
                 <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
             </div>
             
-            <!-- Contentor de Logs -->
             <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans">
                 <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
             </div>
             
-            <!-- Footer Info -->
             <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500">
                 <span>UPLINK: <span id="last-update" class="text-green-500">--</span></span>
                 <span>DB: FIREBASE_RTDB</span>
@@ -143,173 +131,128 @@
     </main>
 
     <script>
-        // =====================================
-        // VARIÁVEIS GLOBAIS E CONFIGURAÇÕES
-        // =====================================
-        const FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
+        const FIREBASE_STATE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
+        const FIREBASE_LOGS_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs.json";
+        const FIREBASE_MAP_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json";
         
         let lastGameState = null;
         let lastNodesData = null;
-        let gameModeCache = "QUIRAL";
-        
         let lastScoreAzul = 0;
         let lastScoreAmarelo = 0;
-
-        // Admin State
         let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+        let isPlayingGlobal = false;
+        const mapNodes = [];
 
-        // =====================================
-        // CAIXA DE MENSAGENS (MODAL)
-        // =====================================
-        // ANÁLISE DE DADOS E LÓGICA DE INTERFACE
-        // =====================================
-        function analisarLogs(newData) {
-            if (!lastNodesData) {
-                // Primeira leitura, inicializa as variáveis de dedução
-                lastScoreAzul = parseInt(newData.az || 0);
-                lastScoreAmarelo = parseInt(newData.am || 0);
-                return; 
+        // --- SISTEMA DE MODAIS ---
+        function showModal(msg) {
+            const m = document.getElementById('modal-box');
+            document.getElementById('modal-text').innerText = msg;
+            m.classList.remove('hidden');
+            setTimeout(() => m.classList.remove('opacity-0'), 10);
+        }
+        function closeModal() {
+            const m = document.getElementById('modal-box');
+            m.classList.add('opacity-0');
+            setTimeout(() => m.classList.add('hidden'), 300);
+        }
+
+        function openAdminModal() {
+            const m = document.getElementById('admin-modal');
+            m.classList.remove('hidden');
+            setTimeout(() => m.classList.remove('opacity-0'), 10);
+        }
+        function closeAdminModal() {
+            const m = document.getElementById('admin-modal');
+            m.classList.add('opacity-0');
+            document.getElementById('admin-pass').value = ''; 
+            setTimeout(() => m.classList.add('hidden'), 300);
+        }
+
+        function authenticateAdmin() {
+            const u = document.getElementById('admin-user').value;
+            const p = document.getElementById('admin-pass').value;
+            
+            if (u === 'quiral' && p === 'felipe123') {
+                isAdmin = true;
+                sessionStorage.setItem('isAdmin', 'true');
+                checkAdminState();
+                closeAdminModal();
+                showModal("Acesso Restrito concedido. Pode alterar o Mapa.");
+            } else {
+                showModal("Credenciais incorretas.");
             }
-            
-            const isQuiral = newData.md === "QUIRAL";
-            const currentAzul = parseInt(newData.az || 0);
-            const currentAmarelo = parseInt(newData.am || 0);
-            
-            // Dedução: Alguma equipa pontuou neste exato segundo?
-            const scoredBlue = currentAzul > lastScoreAzul;
-            const scoredYellow = currentAmarelo > lastScoreAmarelo;
-
-            newData.nos.forEach((node, i) => {
-                const prev = lastNodesData[i];
-                if (!prev) return;
-                
-                const id = i + 1;
-
-                // Modo Conquista / Dominação
-                if (!isQuiral && node.owner !== prev.owner && node.online) {
-                    if (node.owner === 1) addLog(`Nó ${id} dominado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
-                    else if (node.owner === 2) addLog(`Nó ${id} dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
-                    else if (node.owner === 0 && prev.owner !== 0) addLog(`Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`);
-                }
-
-                // Modo Quiral
-                if (isQuiral && node.ativo !== prev.ativo && node.online) {
-                    if (node.ativo) {
-                        addLog(`Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
-                    } else {
-                        // Ficou inativo (Foi capturado). O painel deduz o autor cruzando com o Placar!
-                        if (scoredBlue && !scoredYellow) {
-                            addLog(`Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
-                        } else if (scoredYellow && !scoredBlue) {
-                            addLog(`Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
-                        } else {
-                            addLog(`Nó ${id} <span class="text-red-400 font-bold">CAPTURADO</span>.`);
-                        }
-                    }
-                }
-            });
-            
-            // Atualiza memória para o próximo ciclo
-            lastScoreAzul = currentAzul;
-            lastScoreAmarelo = currentAmarelo;
         }
+        document.getElementById('admin-pass').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') authenticateAdmin();
+        });
 
-        function renderVisuals(data) {
-            const isQuiral = data.md === "QUIRAL";
-            const miniGrid = document.getElementById('nodes-grid');
-            miniGrid.innerHTML = '';
-
-            data.nos.forEach((node, index) => {
-                const id = index + 1;
-                let cssClass = "offline";
-                let badgeColor = "bg-gray-800 border-gray-700";
-
-                if (node.online) {
-                    if (isQuiral) {
-                        cssClass = node.ativo ? "active-green" : "inactive-red";
-                        badgeColor = node.ativo ? "bg-green-900 border-green-600" : "bg-red-900 border-red-600";
-                    } else {
-                        if (node.owner === 1) { cssClass = "active-blue"; badgeColor = "bg-blue-900 border-blue-600"; }
-                        else if (node.owner === 2) { cssClass = "active-yellow"; badgeColor = "bg-yellow-900 border-yellow-600"; }
-                        else { cssClass = "offline"; badgeColor = "bg-gray-700 border-gray-500"; }
-                    }
-                }
-
-                const mapNode = document.getElementById(`map-node-${id}`);
-                if (mapNode) {
-                    const cursorClass = isAdmin ? 'cursor-move' : '';
-                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none z-10 select-none ${cursorClass} ${cssClass}`;
-                }
-
-                miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
+        function checkAdminState() {
+            if (isAdmin) {
+                document.getElementById('btn-admin').classList.add('hidden');
+                document.getElementById('btn-upload').classList.remove('hidden');
+                document.getElementById('admin-hint').classList.remove('hidden');
+            }
+            mapNodes.forEach(node => {
+                if (isAdmin) node.classList.add('cursor-move');
+                else node.classList.remove('cursor-move');
             });
         }
 
-        async function fetchUplinkData() {
+        // --- SISTEMA DE MAPA NA NUVEM ---
+        function applyMapImage(base64Data) {
+            const imgEl = document.getElementById('map-bg');
+            const container = document.getElementById('map-container');
+            const tempImg = new Image();
+            tempImg.onload = function() {
+                container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
+                imgEl.src = base64Data;
+                imgEl.classList.remove('hidden');
+                document.getElementById('map-placeholder').classList.add('hidden');
+            };
+            tempImg.src = base64Data;
+        }
+
+        async function fetchCloudMap() {
             try {
-                const response = await fetch(FIREBASE_URL + "?nocache=" + new Date().getTime());
+                const response = await fetch(FIREBASE_MAP_URL + "?nocache=" + new Date().getTime());
                 const data = await response.json();
-
                 if (data) {
-                    const timestamp = new Date().toLocaleTimeString('pt-PT');
-                    document.getElementById('last-update').innerText = timestamp;
-                    gameModeCache = data.md || "QUIRAL";
-
-                    const isPlaying = (data.st === "ON");
-                    
-                    document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0";
-                    document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0";
-                    document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00";
-                    document.getElementById('game-mode').innerText = "MODO: " + gameModeCache;
-
-                    const badge = document.getElementById('status-badge');
-                    
-                    // Transição Mestre e Auto-Limpeza de Logs na Nuvem
-                    if (isPlaying) {
-                        badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO";
-                        badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse";
-                        
-                        if (lastGameState === "OFF") {
-                            // Quando o jogo começa do zero, substituímos todos os logs pelo Log Mestre Inicial!
-                            const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
-                            const startLog = { t: time, m: `<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!`, ts: Date.now() };
-                            fetch(LOGS_DB_URL, {
-                                method: 'PUT',
-                                body: JSON.stringify({ sys_start: startLog })
-                            });
-                        }
-                    } else {
-                        badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO";
-                        badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600";
-                        
-                        if (lastGameState === "ON") {
-                            saveLogToCloud("sys_stop", `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Central Ociosa.`);
-                        }
+                    if (data.image) applyMapImage(data.image);
+                    if (data.positions) {
+                        mapNodes.forEach((el, index) => {
+                            const pos = data.positions[index + 1];
+                            if (pos) {
+                                el.style.left = pos.x;
+                                el.style.top = pos.y;
+                            }
+                        });
                     }
-
-                    if (data.nos && Array.isArray(data.nos)) {
-                        if (isPlaying) analisarMudancasParaLogs(data); 
-                        renderVisuals(data);
-                        lastNodesData = JSON.parse(JSON.stringify(data.nos)); 
-                    }
-
-                    lastGameState = data.st;
                 }
-            } catch (error) {
-                console.error("Uplink failed:", error);
-                document.getElementById('status-badge').innerText = "FALHA DE SINAL FIREBASE";
-                document.getElementById('status-badge').className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-red-900/50 text-red-400 border border-red-600 pulse";
-            }
+            } catch (e) { console.error("Erro ao puxar mapa:", e); }
         }
 
-        // =====================================
-        // BOOT DO SISTEMA WEB
-        // =====================================
-        initMap();
-        fetchUplinkData();
-        fetchCloudLogs(); // Busca os logs iniciais
-        setInterval(fetchUplinkData, 2000); 
-        setInterval(fetchCloudLogs, 2500);  // Atualiza a vista de logs constantemente
-    </script>
-</body>
-</html>
+        async function saveMapToCloud(imageB64 = null) {
+            if (!isAdmin) return;
+            const positions = {};
+            mapNodes.forEach((el, index) => {
+                positions[index + 1] = { x: el.style.left, y: el.style.top };
+            });
+            
+            const payload = { positions: positions };
+            if (imageB64) payload.image = imageB64;
+
+            try {
+                // Usa PATCH para não apagar a imagem se enviarmos só posições
+                await fetch(FIREBASE_MAP_URL, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) { showModal("Erro ao guardar na nuvem."); }
+        }
+
+        function makeDraggable(el, id) {
+            let isDragging = false;
+            
+            const startDrag = (e) => {
+                if (!isAdmin || e.target !== el) return;
