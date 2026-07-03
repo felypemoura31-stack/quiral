@@ -161,6 +161,12 @@
         // que, ao abrir sem jogo rodando, o log apareça vazio.
         let sessionSawMatch = false;
 
+        // --- Estado usado só no modo QUIRAL para inferir quem pontuou e detectar bônus ---
+        // (não vem do Firebase, é calculado no navegador comparando o placar a cada ciclo)
+        let lastScoreAz = null;
+        let lastScoreAm = null;
+        let capturasRecentes = { az: [], am: [] }; // timestamps (ms) das últimas desativações de cada time
+
         // Admin State
         let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
 
@@ -463,28 +469,86 @@
             if (!lastNodesData) return;
             const isQuiral = newData.md === "QUIRAL";
 
+            if (isQuiral) {
+                analisarQuiral(newData);
+            } else {
+                analisarConquista(newData);
+            }
+        }
+
+        // Modo QUIRAL: nós só têm ativo/inativo (não existe "dono" nem "neutralizado").
+        // Um nó fica INATIVO quando um time aperta o botão e pontua nele.
+        // Quem pontuou é inferido comparando o placar (az/am) do ciclo anterior com o atual.
+        function analisarQuiral(newData) {
+            const az = parseInt(newData.az) || 0;
+            const am = parseInt(newData.am) || 0;
+            const azSubiu = lastScoreAz !== null && az > lastScoreAz;
+            const amSubiu = lastScoreAm !== null && am > lastScoreAm;
+
+            newData.nos.forEach((node, i) => {
+                const prev = lastNodesData[i];
+                if (!prev || !node.online) return;
+
+                const id = i + 1;
+                const chaveBase = `t${(newData.tp || '0000').replace(':', '')}_n${id}`;
+
+                if (node.ativo === prev.ativo) return; // sem mudança neste nó
+
+                if (prev.ativo && !node.ativo) {
+                    // Nó foi desativado -> alguém pontuou
+                    const agora = Date.now();
+                    if (azSubiu) {
+                        saveLogToCloud(`${chaveBase}_ponto_azul`, `Nó ${id} desativado — ponto para <span class="text-blue-400 font-bold">AZUL</span>.`);
+                        registrarCapturaBonus('az', agora, newData.tp);
+                    } else if (amSubiu) {
+                        saveLogToCloud(`${chaveBase}_ponto_amarelo`, `Nó ${id} desativado — ponto para <span class="text-yellow-400 font-bold">AMARELO</span>.`);
+                        registrarCapturaBonus('am', agora, newData.tp);
+                    } else {
+                        // Placar não mudou junto (ex: perdemos um ciclo de leitura) -- loga sem atribuir time
+                        saveLogToCloud(`${chaveBase}_desativado`, `Nó ${id} <span class="text-red-400 font-bold">DESATIVADO</span>.`);
+                    }
+                } else if (!prev.ativo && node.ativo) {
+                    saveLogToCloud(`${chaveBase}_reativado`, `Nó ${id} <span class="text-green-400 font-bold">REATIVADO</span> e pronto.`);
+                }
+            });
+
+            lastScoreAz = az;
+            lastScoreAm = am;
+        }
+
+        // Mantém as últimas desativações do time num intervalo de 15s; se atingir 3, loga o bônus.
+        function registrarCapturaBonus(time, agoraMs, tp) {
+            const arr = capturasRecentes[time];
+            arr.push(agoraMs);
+            while (arr.length && agoraMs - arr[0] > 15000) arr.shift();
+
+            if (arr.length >= 3) {
+                const nomeTime = time === 'az'
+                    ? '<span class="text-blue-400 font-bold">AZUL</span>'
+                    : '<span class="text-yellow-400 font-bold">AMARELO</span>';
+                const chave = `bonus_${time}_t${(tp || '0000').replace(':', '')}`;
+                saveLogToCloud(chave, `<span class="text-purple-400 font-bold">BÔNUS!</span> Time ${nomeTime} desativou 3 nós em menos de 15s (+3 pontos).`);
+                arr.length = 0; // evita disparar de novo pra mesma sequência já contabilizada
+            }
+        }
+
+        // Modo CONQUISTA (ou outros modos com território): nós têm "dono" (owner).
+        function analisarConquista(newData) {
             newData.nos.forEach((node, i) => {
                 const prev = lastNodesData[i];
                 if (!prev) return;
 
                 const id = i + 1;
                 let logMsg = null;
-                // Chave determinística: tempo de partida + nó + tipo de evento.
-                // SEM Date.now() -- isso é o que permite que múltiplos clientes
-                // detectando o mesmo evento não criem entradas duplicadas.
-                let logIdUnico = `t${(newData.tp || '0000').replace(':','')}_n${id}`;
+                let chave = `t${(newData.tp || '0000').replace(':', '')}_n${id}`;
 
                 if (node.owner !== prev.owner && node.online) {
-                    if (node.owner === 1) { logMsg = `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`; logIdUnico += "_azul"; }
-                    else if (node.owner === 2) { logMsg = `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`; logIdUnico += "_amarelo"; }
-                    else if (node.owner === 0 && prev.owner !== 0) { logMsg = `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`; logIdUnico += "_neutro"; }
+                    if (node.owner === 1) { logMsg = `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`; chave += "_azul"; }
+                    else if (node.owner === 2) { logMsg = `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`; chave += "_amarelo"; }
+                    else if (node.owner === 0 && prev.owner !== 0) { logMsg = `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`; chave += "_neutro"; }
                 }
 
-                if (isQuiral && node.ativo !== prev.ativo && node.online) {
-                    if (node.ativo) { logMsg = `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`; logIdUnico += "_reativado"; }
-                }
-
-                if (logMsg) saveLogToCloud(logIdUnico, logMsg);
+                if (logMsg) saveLogToCloud(chave, logMsg);
             });
         }
 
@@ -566,7 +630,11 @@
 
                         if (lastGameState === "OFF") {
                             // Transição real OFF -> ON: começou uma partida NOVA.
-                            // Zera o log da nuvem e grava o marcador de início.
+                            // Zera o log da nuvem, o estado local de placar/bônus,
+                            // e grava o marcador de início.
+                            lastScoreAz = null;
+                            lastScoreAm = null;
+                            capturasRecentes = { az: [], am: [] };
                             await clearCloudLogs();
                             await saveLogToCloud('sys_start', `<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!`);
                         }
