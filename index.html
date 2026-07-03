@@ -8,251 +8,130 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
         body { font-family: 'Share Tech Mono', monospace; background-color: #050505; color: #fff; }
-        .neon-text { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #0ff; }
-        .pulse { animation: pulse-animation 2s infinite; }
-        @keyframes pulse-animation { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
         .bg-chiral { background: linear-gradient(180deg, #1a1a1a 0%, #050505 100%); }
         .log-container::-webkit-scrollbar { width: 6px; }
         .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-        
-        /* Estilos do Mapa Tático */
-        .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; }
-        .map-node.active-blue { background-color: rgba(59, 130, 246, 0.8); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; color: #fff; }
-        .map-node.active-yellow { background-color: rgba(234, 179, 8, 0.8); border-color: #fde047; box-shadow: 0 0 15px #eab308; color: #000; }
-        .map-node.active-green { background-color: rgba(34, 197, 94, 0.8); border-color: #4ade80; box-shadow: 0 0 15px #22c55e; color: #fff; }
-        .map-node.inactive-red { background-color: rgba(239, 68, 68, 0.8); border-color: #f87171; box-shadow: 0 0 15px #ef4444; color: #fff; }
-        .map-node.offline { background-color: rgba(31, 41, 55, 0.8); border-color: #4b5563; color: #9ca3af; }
+        .map-node { transition: all 0.3s; }
+        .active-blue { background-color: rgba(59, 130, 246, 0.8); border: 2px solid #60a5fa; box-shadow: 0 0 15px #3b82f6; }
+        .active-yellow { background-color: rgba(234, 179, 8, 0.8); border: 2px solid #fde047; box-shadow: 0 0 15px #eab308; }
+        .active-green { background-color: rgba(34, 197, 94, 0.8); border: 2px solid #4ade80; box-shadow: 0 0 15px #22c55e; }
+        .inactive-red { background-color: rgba(239, 68, 68, 0.8); border: 2px solid #f87171; box-shadow: 0 0 15px #ef4444; }
+        .offline { background-color: rgba(31, 41, 55, 0.8); border: 2px solid #4b5563; }
     </style>
 </head>
-<body class="bg-chiral min-h-screen p-2 md:p-4">
+<body class="bg-chiral min-h-screen p-4">
 
-    <!-- Caixa de Mensagem Modal -->
-    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden opacity-0 transition-opacity">
-        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center shadow-2xl max-w-sm mx-4">
-            <h3 class="text-xl text-yellow-500 mb-2 font-bold">AVISO TÁTICO</h3>
-            <p id="modal-text" class="text-gray-300 mb-4">Mensagem</p>
-            <button onclick="closeModal()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-500">ENTENDIDO</button>
+    <!-- MODALS -->
+    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] hidden">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center max-w-sm mx-4">
+            <h3 class="text-xl text-yellow-500 font-bold mb-2">SISTEMA</h3>
+            <p id="modal-text" class="text-gray-300 mb-4"></p>
+            <button onclick="closeModal()" class="px-6 py-2 bg-gray-700 text-white rounded">ENTENDIDO</button>
         </div>
     </div>
 
-    <!-- Admin Login Modal -->
-    <div id="admin-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
-        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
-            <h3 class="text-xl text-red-500 mb-4 font-bold text-center">ACESSO RESTRITO</h3>
-            <input type="text" id="admin-user" placeholder="Usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-blue-500 focus:outline-none">
-            <input type="password" id="admin-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-blue-500 focus:outline-none">
+    <div id="admin-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] hidden">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg w-full max-w-sm mx-4">
+            <h3 class="text-xl text-red-500 font-bold mb-4 text-center">ACESSO ADMIN</h3>
+            <input type="text" id="admin-user" placeholder="Usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white">
+            <input type="password" id="admin-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white">
             <div class="flex justify-between">
-                <button onclick="closeAdminModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">CANCELAR</button>
-                <button onclick="authenticateAdmin()" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded font-bold border border-blue-600">ENTRAR</button>
+                <button onclick="closeAdminModal()" class="px-4 py-2 bg-gray-700 text-white rounded">CANCELAR</button>
+                <button onclick="authenticateAdmin()" class="px-4 py-2 bg-blue-800 text-white rounded">ENTRAR</button>
             </div>
         </div>
     </div>
 
     <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4">
-        <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider">[ COMANDO QUIRAL ]</h1>
-        <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">
-            A ESTABELECER LIGAÇÃO...
-        </div>
+        <h1 class="text-3xl font-bold text-green-400">[ COMANDO QUIRAL ]</h1>
     </header>
 
-    <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        
-        <div class="lg:col-span-2 space-y-4 md:space-y-6">
-            <!-- Placar -->
-            <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg shadow-lg relative overflow-hidden">
-                <div class="flex justify-between items-center relative z-10">
-                    <div class="text-center w-1/3">
-                        <h3 class="text-lg md:text-xl text-blue-500 font-bold mb-1">AZUL</h3>
-                        <div id="score-azul" class="text-4xl md:text-6xl font-bold text-blue-400 neon-text">0</div>
-                    </div>
-                    <div class="text-center w-1/3">
-                        <div id="game-time" class="text-2xl md:text-4xl font-bold text-white tracking-widest">00:00</div>
-                        <p id="game-mode" class="text-gray-400 text-xs md:text-sm mt-1">MODO: --</p>
-                    </div>
-                    <div class="text-center w-1/3">
-                        <h3 class="text-lg md:text-xl text-yellow-500 font-bold mb-1">AMARELA</h3>
-                        <div id="score-amarelo" class="text-4xl md:text-6xl font-bold text-yellow-400" style="text-shadow: 0 0 10px #a60;">0</div>
-                    </div>
-                </div>
+    <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-6">
+            <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg flex justify-between">
+                <div class="text-center w-1/3"><h3 class="text-blue-500 font-bold">AZUL</h3><div id="score-azul" class="text-5xl font-bold">0</div></div>
+                <div class="text-center w-1/3"><div id="game-time" class="text-3xl font-bold">00:00</div></div>
+                <div class="text-center w-1/3"><h3 class="text-yellow-500 font-bold">AMARELA</h3><div id="score-amarelo" class="text-5xl font-bold">0</div></div>
             </div>
-
-            <!-- Mapa Tático -->
-            <div class="bg-gray-900/80 border border-gray-700 p-2 md:p-4 rounded-lg shadow-lg">
-                <div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
-                    <h2 class="text-sm md:text-base text-gray-400 font-bold">MAPA TÁTICO</h2>
-                    <div class="flex gap-2">
-                        <button id="btn-admin" onclick="openAdminModal()" class="bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
-                            ADMIN
-                        </button>
-                        <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">
-                            IMPORTAR MAPA
-                            <input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden">
-                        </label>
-                    </div>
+            
+            <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg">
+                <div class="flex justify-between mb-4">
+                    <h2 class="text-gray-400 font-bold">MAPA TÁTICO</h2>
+                    <button id="btn-admin" onclick="openAdminModal()" class="bg-gray-800 text-xs text-white px-3 py-1 rounded border border-gray-600">ADMIN</button>
                 </div>
-                
-                <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
-                    <img id="map-bg" class="absolute inset-0 w-full h-full hidden pointer-events-none" alt="Mapa do Campo">
-                    <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none">
-                        Aguardando sincronização de mapa da nuvem...
-                    </div>
+                <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden" style="aspect-ratio: 16/9;">
+                    <img id="map-bg" class="w-full h-full object-cover hidden">
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
-                <p id="admin-hint" class="text-[10px] text-green-500 mt-2 text-center hidden">Modo Admin Ativo: Alterações no mapa são salvas na Nuvem automaticamente.</p>
-            </div>
-            
-            <!-- Radar Clássico -->
-            <div class="bg-gray-900/50 border border-gray-800 p-3 rounded-lg">
-                <h2 class="text-xs text-gray-500 mb-2 font-bold text-center">RADAR CLÁSSICO</h2>
-                <div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2"></div>
             </div>
         </div>
 
-        <!-- Registo de Combate -->
-        <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] lg:h-auto">
-            <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
-                <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                    REGISTO DE COMBATE
-                </h2>
-                <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
-            </div>
-            
-            <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans">
-                <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
-            </div>
-            
-            <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500">
-                <span>UPLINK: <span id="last-update" class="text-green-500">--</span></span>
-                <span>DB: FIREBASE_RTDB</span>
-            </div>
+        <div class="bg-gray-900/80 border border-gray-700 rounded-lg flex flex-col h-[400px]">
+            <div class="p-3 border-b border-gray-800 font-bold text-gray-300">REGISTO DE COMBATE</div>
+            <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-sm"></div>
         </div>
-
     </main>
 
     <script>
-        const FIREBASE_STATE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
-        const FIREBASE_LOGS_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs.json";
-        const FIREBASE_MAP_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json";
-        
-        let lastGameState = null;
-        let lastNodesData = null;
-        let lastScoreAzul = 0;
-        let lastScoreAmarelo = 0;
+        const FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
         let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
-        let isPlayingGlobal = false;
-        const mapNodes = [];
+        let lastNodesData = null;
 
-        // --- SISTEMA DE MODAIS ---
-        function showModal(msg) {
-            const m = document.getElementById('modal-box');
-            document.getElementById('modal-text').innerText = msg;
-            m.classList.remove('hidden');
-            setTimeout(() => m.classList.remove('opacity-0'), 10);
-        }
-        function closeModal() {
-            const m = document.getElementById('modal-box');
-            m.classList.add('opacity-0');
-            setTimeout(() => m.classList.add('hidden'), 300);
-        }
-
-        function openAdminModal() {
-            const m = document.getElementById('admin-modal');
-            m.classList.remove('hidden');
-            setTimeout(() => m.classList.remove('opacity-0'), 10);
-        }
-        function closeAdminModal() {
-            const m = document.getElementById('admin-modal');
-            m.classList.add('opacity-0');
-            document.getElementById('admin-pass').value = ''; 
-            setTimeout(() => m.classList.add('hidden'), 300);
-        }
-
+        // --- MODO ADMIN ---
+        function openAdminModal() { document.getElementById('admin-modal').classList.remove('hidden'); }
+        function closeAdminModal() { document.getElementById('admin-modal').classList.add('hidden'); }
+        function closeModal() { document.getElementById('modal-box').classList.add('hidden'); }
+        
         function authenticateAdmin() {
             const u = document.getElementById('admin-user').value;
             const p = document.getElementById('admin-pass').value;
-            
             if (u === 'quiral' && p === 'felipe123') {
                 isAdmin = true;
                 sessionStorage.setItem('isAdmin', 'true');
-                checkAdminState();
                 closeAdminModal();
-                showModal("Acesso Restrito concedido. Pode alterar o Mapa.");
+                alert("Modo Admin Ativado");
             } else {
-                showModal("Credenciais incorretas.");
+                alert("Senha Incorreta");
             }
         }
-        document.getElementById('admin-pass').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') authenticateAdmin();
-        });
 
-        function checkAdminState() {
-            if (isAdmin) {
-                document.getElementById('btn-admin').classList.add('hidden');
-                document.getElementById('btn-upload').classList.remove('hidden');
-                document.getElementById('admin-hint').classList.remove('hidden');
-            }
-            mapNodes.forEach(node => {
-                if (isAdmin) node.classList.add('cursor-move');
-                else node.classList.remove('cursor-move');
-            });
+        // --- SISTEMA DE LOGS ---
+        function addLog(msg) {
+            const box = document.getElementById('log-box');
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
+            div.innerHTML = `<span class="text-gray-500">[${time}]</span> ${msg}`;
+            box.prepend(div);
         }
 
-        // --- SISTEMA DE MAPA NA NUVEM ---
-        function applyMapImage(base64Data) {
-            const imgEl = document.getElementById('map-bg');
-            const container = document.getElementById('map-container');
-            const tempImg = new Image();
-            tempImg.onload = function() {
-                container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
-                imgEl.src = base64Data;
-                imgEl.classList.remove('hidden');
-                document.getElementById('map-placeholder').classList.add('hidden');
-            };
-            tempImg.src = base64Data;
-        }
-
-        async function fetchCloudMap() {
+        // --- CORE LÓGICA ---
+        async function updateDashboard() {
             try {
-                const response = await fetch(FIREBASE_MAP_URL + "?nocache=" + new Date().getTime());
-                const data = await response.json();
-                if (data) {
-                    if (data.image) applyMapImage(data.image);
-                    if (data.positions) {
-                        mapNodes.forEach((el, index) => {
-                            const pos = data.positions[index + 1];
-                            if (pos) {
-                                el.style.left = pos.x;
-                                el.style.top = pos.y;
-                            }
-                        });
-                    }
+                const res = await fetch(FIREBASE_URL + "?nocache=" + Date.now());
+                const data = await res.json();
+                if (!data) return;
+
+                document.getElementById('score-azul').innerText = data.az || "0";
+                document.getElementById('score-amarelo').innerText = data.am || "0";
+                document.getElementById('game-time').innerText = data.tp || "00:00";
+
+                if (lastNodesData && data.nos) {
+                    data.nos.forEach((n, i) => {
+                        const prev = lastNodesData[i];
+                        if (n.online && prev && n.owner !== prev.owner) {
+                            const team = n.owner === 1 ? "AZUL" : (n.owner === 2 ? "AMARELA" : "NEUTRO");
+                            const color = n.owner === 1 ? "text-blue-400" : (n.owner === 2 ? "text-yellow-400" : "text-gray-400");
+                            addLog(`Nó ${i+1} capturado pelo <span class="${color} font-bold">${team}</span>`);
+                        }
+                    });
                 }
-            } catch (e) { console.error("Erro ao puxar mapa:", e); }
+                lastNodesData = data.nos;
+            } catch(e) { console.error("Falha no Uplink"); }
         }
 
-        async function saveMapToCloud(imageB64 = null) {
-            if (!isAdmin) return;
-            const positions = {};
-            mapNodes.forEach((el, index) => {
-                positions[index + 1] = { x: el.style.left, y: el.style.top };
-            });
-            
-            const payload = { positions: positions };
-            if (imageB64) payload.image = imageB64;
-
-            try {
-                // Usa PATCH para não apagar a imagem se enviarmos só posições
-                await fetch(FIREBASE_MAP_URL, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            } catch (e) { showModal("Erro ao guardar na nuvem."); }
-        }
-
-        function makeDraggable(el, id) {
-            let isDragging = false;
-            
-            const startDrag = (e) => {
-                if (!isAdmin || e.target !== el) return;
+        // --- INICIALIZAÇÃO ---
+        setInterval(updateDashboard, 2000);
+        updateDashboard();
+    </script>
+</body>
+</html>
