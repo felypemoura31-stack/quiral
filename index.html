@@ -147,12 +147,13 @@
         // VARIÁVEIS GLOBAIS E CONFIGURAÇÕES
         // =====================================
         const FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
-        const MAP_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json"; 
-        const LOGS_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs.json"; // <--- Novo Banco de Logs
         
         let lastGameState = null;
         let lastNodesData = null;
         let gameModeCache = "QUIRAL";
+        
+        let lastScoreAzul = 0;
+        let lastScoreAmarelo = 0;
 
         // Admin State
         let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
@@ -160,291 +161,57 @@
         // =====================================
         // CAIXA DE MENSAGENS (MODAL)
         // =====================================
-        function showModal(msg) {
-            const m = document.getElementById('modal-box');
-            document.getElementById('modal-text').innerText = msg;
-            m.classList.remove('hidden');
-            setTimeout(() => m.classList.remove('opacity-0'), 10);
-        }
-        function closeModal() {
-            const m = document.getElementById('modal-box');
-            m.classList.add('opacity-0');
-            setTimeout(() => m.classList.add('hidden'), 300);
-        }
-
+        // ANÁLISE DE DADOS E LÓGICA DE INTERFACE
         // =====================================
-        // SISTEMA DE LOGIN ADMIN
-        // =====================================
-        function checkAdminState() {
-            const btnAdmin = document.getElementById('btn-admin');
-            const btnUpload = document.getElementById('btn-upload');
-            const adminHint = document.getElementById('admin-hint');
-
-            if (isAdmin) {
-                btnAdmin.classList.add('hidden');
-                btnUpload.classList.remove('hidden');
-                adminHint.classList.remove('hidden');
-            } else {
-                btnAdmin.classList.remove('hidden');
-                btnUpload.classList.add('hidden');
-                adminHint.classList.add('hidden');
+        function analisarLogs(newData) {
+            if (!lastNodesData) {
+                // Primeira leitura, inicializa as variáveis de dedução
+                lastScoreAzul = parseInt(newData.az || 0);
+                lastScoreAmarelo = parseInt(newData.am || 0);
+                return; 
             }
-
-            mapNodes.forEach(node => {
-                if (isAdmin) { node.classList.add('cursor-move'); } 
-                else { node.classList.remove('cursor-move'); }
-            });
-        }
-
-        function openAdminModal() {
-            const m = document.getElementById('admin-modal');
-            m.classList.remove('hidden');
-            setTimeout(() => m.classList.remove('opacity-0'), 10);
-        }
-
-        function closeAdminModal() {
-            const m = document.getElementById('admin-modal');
-            m.classList.add('opacity-0');
-            document.getElementById('admin-pass').value = '';
-            setTimeout(() => m.classList.add('hidden'), 300);
-        }
-
-        function authenticateAdmin() {
-            const u = document.getElementById('admin-user').value;
-            const p = document.getElementById('admin-pass').value;
             
-            if (u === 'quiral' && p === 'felipe123') {
-                isAdmin = true;
-                sessionStorage.setItem('isAdmin', 'true');
-                checkAdminState();
-                closeAdminModal();
-                showModal("Acesso Restrito concedido. Ferramentas de edição de mapa ativadas. As alterações serão salvas na nuvem.");
-            } else {
-                showModal("Credenciais incorretas. Acesso negado.");
-            }
-        }
-
-        document.getElementById('admin-pass').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') authenticateAdmin();
-        });
-
-        // =====================================
-        // SISTEMA DE LOGS NA NUVEM (NOVO)
-        // =====================================
-        
-        // Grava um evento de combate na nuvem
-        async function saveLogToCloud(logId, htmlMessage) {
-            const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
-            // O 'ts' (timestamp) garante a ordenação perfeita de quando o evento ocorreu
-            const logEntry = { t: time, m: htmlMessage, ts: Date.now() };
-            try {
-                await fetch(`https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs/${logId}.json`, {
-                    method: 'PUT',
-                    body: JSON.stringify(logEntry)
-                });
-            } catch(e) { console.error("Erro ao guardar log", e); }
-        }
-
-        let isFetchingLogs = false;
-        
-        // Puxa o histórico de combate da nuvem e exibe na tela
-        async function fetchCloudLogs() {
-            if (isFetchingLogs) return;
-            isFetchingLogs = true;
-            try {
-                const res = await fetch(LOGS_DB_URL + "?nocache=" + Date.now());
-                const data = await res.json();
-                const box = document.getElementById('log-box');
-                
-                if (!data) {
-                    box.innerHTML = '<div class="text-gray-500 text-center italic mt-10">Nenhum registo de combate atual.</div>';
-                } else {
-                    // Transforma o objeto do Firebase num Array e ordena do mais recente para o mais antigo
-                    const logsArray = Object.values(data).sort((a, b) => b.ts - a.ts);
-                    box.innerHTML = '';
-                    
-                    // Exibe apenas os últimos 60 registos
-                    logsArray.slice(0, 60).forEach(log => {
-                        const entry = document.createElement('div');
-                        entry.className = "border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r mb-2 animate-fade-in";
-                        entry.innerHTML = `<span class="text-gray-500 font-mono">[${log.t}]</span> ${log.m}`;
-                        box.appendChild(entry);
-                    });
-                }
-            } catch (e) {
-                console.error("Erro ao buscar logs da nuvem", e);
-            }
-            isFetchingLogs = false;
-        }
-
-        // =====================================
-        // SISTEMA DO MAPA E ARRASTO (NUVEM)
-        // =====================================
-        const mapNodes = [];
-        
-        function applyMapImage(base64Data) {
-            const imgEl = document.getElementById('map-bg');
-            const container = document.getElementById('map-container');
-            
-            const tempImg = new Image();
-            tempImg.onload = function() {
-                container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
-                imgEl.src = base64Data;
-                imgEl.classList.remove('hidden');
-                document.getElementById('map-placeholder').classList.add('hidden');
-            };
-            tempImg.src = base64Data;
-        }
-
-        async function initMap() {
-            const layer = document.getElementById('map-nodes-layer');
-            let savedPositions = {};
-            let savedImage = null;
-
-            try {
-                const res = await fetch(MAP_DB_URL + "?nocache=" + new Date().getTime());
-                const data = await res.json();
-                if (data) {
-                    savedPositions = data.positions || {};
-                    savedImage = data.image || null;
-                }
-            } catch (err) { console.warn("Nenhum mapa encontrado no servidor."); }
-
-            if (savedImage) applyMapImage(savedImage);
-
-            for(let i=1; i<=10; i++) {
-                const nodeEl = document.createElement('div');
-                nodeEl.id = `map-node-${i}`;
-                nodeEl.className = "map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none bg-gray-800 border-gray-600 text-gray-400 z-10 select-none";
-                nodeEl.innerText = i;
-                
-                if (savedPositions[i]) {
-                    nodeEl.style.left = savedPositions[i].x;
-                    nodeEl.style.top = savedPositions[i].y;
-                } else {
-                    nodeEl.style.left = `${(i * 9) % 90 + 5}%`;
-                    nodeEl.style.top = `10%`;
-                }
-
-                layer.appendChild(nodeEl);
-                mapNodes.push(nodeEl);
-                makeDraggable(nodeEl, i);
-            }
-
-            checkAdminState(); 
-        }
-
-        async function savePositions() {
-            const pos = {};
-            mapNodes.forEach((el, index) => {
-                pos[index + 1] = { x: el.style.left, y: el.style.top };
-            });
-            try {
-                await fetch(MAP_DB_URL, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ positions: pos })
-                });
-            } catch (err) {}
-        }
-
-        function makeDraggable(el, id) {
-            let isDragging = false;
-            
-            const startDrag = (e) => {
-                if (!isAdmin) return; 
-                if (e.target !== el) return;
-                isDragging = true;
-                e.preventDefault(); 
-            };
-            
-            const doDrag = (e) => {
-                if (!isDragging) return;
-                e.preventDefault();
-                
-                const container = document.getElementById('map-container');
-                const rect = container.getBoundingClientRect();
-                let clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                let clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                
-                let x = clientX - rect.left;
-                let y = clientY - rect.top;
-                
-                x = Math.max(0, Math.min(x, rect.width));
-                y = Math.max(0, Math.min(y, rect.height));
-                
-                el.style.left = `${(x / rect.width) * 100}%`;
-                el.style.top = `${(y / rect.height) * 100}%`;
-            };
-            
-            const endDrag = () => {
-                if (isDragging) {
-                    isDragging = false;
-                    savePositions();
-                }
-            };
-
-            el.addEventListener('mousedown', startDrag);
-            el.addEventListener('touchstart', startDrag, {passive: false});
-            
-            document.addEventListener('mousemove', doDrag);
-            document.addEventListener('touchmove', doDrag, {passive: false});
-            
-            document.addEventListener('mouseup', endDrag);
-            document.addEventListener('touchend', endDrag);
-        }
-
-        document.getElementById('map-upload').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            if (file.size > 2 * 1024 * 1024) { showModal("Imagem demasiado grande. Use menos de 2MB."); return; }
-
-            const reader = new FileReader();
-            reader.onload = async function(event) {
-                const base64 = event.target.result;
-                applyMapImage(base64); 
-                showModal("A sincronizar mapa com a Sala de Guerra na Nuvem... Aguarde.");
-                try {
-                    await fetch(MAP_DB_URL, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ image: base64 })
-                    });
-                    showModal("Sincronização Concluída! Todos os dispositivos estão a ver este mapa.");
-                } catch (err) { showModal("Erro ao guardar o mapa no servidor."); }
-            };
-            reader.readAsDataURL(file);
-        });
-
-        // =====================================
-        // ANÁLISE DE DADOS E GERAÇÃO DE EVENTOS
-        // =====================================
-        function analisarMudancasParaLogs(newData) {
-            if (!lastNodesData) return; 
             const isQuiral = newData.md === "QUIRAL";
+            const currentAzul = parseInt(newData.az || 0);
+            const currentAmarelo = parseInt(newData.am || 0);
+            
+            // Dedução: Alguma equipa pontuou neste exato segundo?
+            const scoredBlue = currentAzul > lastScoreAzul;
+            const scoredYellow = currentAmarelo > lastScoreAmarelo;
 
             newData.nos.forEach((node, i) => {
                 const prev = lastNodesData[i];
                 if (!prev) return;
                 
                 const id = i + 1;
-                let logMsg = null;
-                // Cria um ID único no Firebase usando o Tempo da Partida e o ID do Nó
-                let logIdUnico = `t${newData.tp.replace(':','')}_n${id}`;
-                
-                if (node.owner !== prev.owner && node.online) {
-                    if (node.owner === 1) { logMsg = `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`; logIdUnico += "_azul"; }
-                    else if (node.owner === 2) { logMsg = `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`; logIdUnico += "_amarelo"; }
-                    else if (node.owner === 0 && prev.owner !== 0) { logMsg = `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`; logIdUnico += "_neutro"; }
+
+                // Modo Conquista / Dominação
+                if (!isQuiral && node.owner !== prev.owner && node.online) {
+                    if (node.owner === 1) addLog(`Nó ${id} dominado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
+                    else if (node.owner === 2) addLog(`Nó ${id} dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
+                    else if (node.owner === 0 && prev.owner !== 0) addLog(`Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`);
                 }
 
+                // Modo Quiral
                 if (isQuiral && node.ativo !== prev.ativo && node.online) {
-                    if (node.ativo) { logMsg = `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`; logIdUnico += "_reativado"; }
+                    if (node.ativo) {
+                        addLog(`Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
+                    } else {
+                        // Ficou inativo (Foi capturado). O painel deduz o autor cruzando com o Placar!
+                        if (scoredBlue && !scoredYellow) {
+                            addLog(`Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
+                        } else if (scoredYellow && !scoredBlue) {
+                            addLog(`Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
+                        } else {
+                            addLog(`Nó ${id} <span class="text-red-400 font-bold">CAPTURADO</span>.`);
+                        }
+                    }
                 }
-
-                // Se gerou uma ação importante, envia diretamente para o Firebase Log!
-                if (logMsg) saveLogToCloud(logIdUnico, logMsg);
             });
+            
+            // Atualiza memória para o próximo ciclo
+            lastScoreAzul = currentAzul;
+            lastScoreAmarelo = currentAmarelo;
         }
 
         function renderVisuals(data) {
