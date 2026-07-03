@@ -14,7 +14,7 @@
         .bg-chiral { background: linear-gradient(180deg, #1a1a1a 0%, #050505 100%); }
         .log-container::-webkit-scrollbar { width: 6px; }
         .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-        
+
         .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; }
         .map-node.active-blue { background-color: rgba(59, 130, 246, 0.8); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; color: #fff; }
         .map-node.active-yellow { background-color: rgba(234, 179, 8, 0.8); border-color: #fde047; box-shadow: 0 0 15px #eab308; color: #000; }
@@ -57,10 +57,10 @@
 
     <!-- Main Dashboard -->
     <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        
+
         <!-- COLUNA ESQUERDA: Placar e Mapa -->
         <div class="lg:col-span-2 space-y-4 md:space-y-6">
-            
+
             <!-- Placar -->
             <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg shadow-lg relative overflow-hidden">
                 <div class="flex justify-between items-center relative z-10">
@@ -90,13 +90,16 @@
                         <button id="btn-admin" onclick="openAdminModal()" class="bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
                             ADMIN
                         </button>
+                        <button id="btn-logout" onclick="logoutAdmin()" class="bg-red-900 hover:bg-red-800 text-xs text-white px-3 py-1 rounded border border-red-700 transition-colors hidden">
+                            SAIR
+                        </button>
                         <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">
                             IMPORTAR MAPA
                             <input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden">
                         </label>
                     </div>
                 </div>
-                
+
                 <!-- Área do Mapa (Proporção Dinâmica) -->
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
                     <img id="map-bg" class="absolute inset-0 w-full h-full hidden pointer-events-none" alt="Mapa do Campo">
@@ -106,9 +109,9 @@
                     <!-- Os Nós do mapa serão gerados via JS -->
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
-                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: O mapa e as posições são sincronizados com a nuvem automaticamente.</p>
+                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: o mapa e as posições são sincronizados com a nuvem automaticamente.</p>
             </div>
-            
+
             <!-- Radar Clássico (Grelha) -->
             <div class="bg-gray-900/50 border border-gray-800 p-3 rounded-lg">
                 <h2 class="text-xs text-gray-500 mb-2 font-bold text-center">RADAR CLÁSSICO</h2>
@@ -127,12 +130,12 @@
                 </h2>
                 <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
             </div>
-            
+
             <!-- Contentor de Logs -->
             <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans">
                 <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
             </div>
-            
+
             <!-- Footer Info -->
             <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500">
                 <span>UPLINK: <span id="last-update" class="text-green-500">--</span></span>
@@ -147,9 +150,9 @@
         // VARIÁVEIS GLOBAIS E CONFIGURAÇÕES
         // =====================================
         const FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
-        const MAP_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json"; 
-        const LOGS_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs.json"; // <--- Novo Banco de Logs
-        
+        const MAP_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json";
+        const LOGS_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs.json";
+
         let lastGameState = null;
         let lastNodesData = null;
         let gameModeCache = "QUIRAL";
@@ -177,21 +180,24 @@
         // =====================================
         function checkAdminState() {
             const btnAdmin = document.getElementById('btn-admin');
+            const btnLogout = document.getElementById('btn-logout');
             const btnUpload = document.getElementById('btn-upload');
             const adminHint = document.getElementById('admin-hint');
 
             if (isAdmin) {
                 btnAdmin.classList.add('hidden');
+                btnLogout.classList.remove('hidden');
                 btnUpload.classList.remove('hidden');
                 adminHint.classList.remove('hidden');
             } else {
                 btnAdmin.classList.remove('hidden');
+                btnLogout.classList.add('hidden');
                 btnUpload.classList.add('hidden');
                 adminHint.classList.add('hidden');
             }
 
             mapNodes.forEach(node => {
-                if (isAdmin) { node.classList.add('cursor-move'); } 
+                if (isAdmin) { node.classList.add('cursor-move'); }
                 else { node.classList.remove('cursor-move'); }
             });
         }
@@ -212,7 +218,7 @@
         function authenticateAdmin() {
             const u = document.getElementById('admin-user').value;
             const p = document.getElementById('admin-pass').value;
-            
+
             if (u === 'quiral' && p === 'felipe123') {
                 isAdmin = true;
                 sessionStorage.setItem('isAdmin', 'true');
@@ -224,20 +230,27 @@
             }
         }
 
+        function logoutAdmin() {
+            isAdmin = false;
+            sessionStorage.removeItem('isAdmin');
+            checkAdminState();
+            showModal("Sessão de administrador encerrada.");
+        }
+
         document.getElementById('admin-pass').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') authenticateAdmin();
         });
 
         // =====================================
-        // SISTEMA DE LOGS NA NUVEM (NOVO)
+        // SISTEMA DE LOGS NA NUVEM (PERSISTENTE)
         // =====================================
-        
-        // Grava um evento de combate na nuvem
+
+        // Grava UM evento novo na nuvem sob uma chave própria (nunca sobrescreve os outros)
         async function saveLogToCloud(logId, htmlMessage) {
             const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
-            // O 'ts' (timestamp) garante a ordenação perfeita de quando o evento ocorreu
             const logEntry = { t: time, m: htmlMessage, ts: Date.now() };
             try {
+                // PUT numa CHAVE ESPECÍFICA dentro de quiral_logs (não na raiz) -> não apaga o resto
                 await fetch(`https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_logs/${logId}.json`, {
                     method: 'PUT',
                     body: JSON.stringify(logEntry)
@@ -246,7 +259,7 @@
         }
 
         let isFetchingLogs = false;
-        
+
         // Puxa o histórico de combate da nuvem e exibe na tela
         async function fetchCloudLogs() {
             if (isFetchingLogs) return;
@@ -255,18 +268,19 @@
                 const res = await fetch(LOGS_DB_URL + "?nocache=" + Date.now());
                 const data = await res.json();
                 const box = document.getElementById('log-box');
-                
+
                 if (!data) {
-                    box.innerHTML = '<div class="text-gray-500 text-center italic mt-10">Nenhum registo de combate atual.</div>';
+                    box.innerHTML = '<div class="text-gray-500 text-center italic mt-10">Nenhum registo de combate ainda.</div>';
                 } else {
-                    // Transforma o objeto do Firebase num Array e ordena do mais recente para o mais antigo
-                    const logsArray = Object.values(data).sort((a, b) => b.ts - a.ts);
+                    const logsArray = Object.values(data)
+                        .filter(l => l && typeof l === 'object' && l.ts)
+                        .sort((a, b) => b.ts - a.ts);
                     box.innerHTML = '';
-                    
-                    // Exibe apenas os últimos 60 registos
+
+                    // Exibe apenas os últimos 60 registos na tela (o histórico completo continua salvo na nuvem)
                     logsArray.slice(0, 60).forEach(log => {
                         const entry = document.createElement('div');
-                        entry.className = "border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r mb-2 animate-fade-in";
+                        entry.className = "border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r mb-2";
                         entry.innerHTML = `<span class="text-gray-500 font-mono">[${log.t}]</span> ${log.m}`;
                         box.appendChild(entry);
                     });
@@ -281,11 +295,11 @@
         // SISTEMA DO MAPA E ARRASTO (NUVEM)
         // =====================================
         const mapNodes = [];
-        
+
         function applyMapImage(base64Data) {
             const imgEl = document.getElementById('map-bg');
             const container = document.getElementById('map-container');
-            
+
             const tempImg = new Image();
             tempImg.onload = function() {
                 container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
@@ -317,7 +331,7 @@
                 nodeEl.id = `map-node-${i}`;
                 nodeEl.className = "map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none bg-gray-800 border-gray-600 text-gray-400 z-10 select-none";
                 nodeEl.innerText = i;
-                
+
                 if (savedPositions[i]) {
                     nodeEl.style.left = savedPositions[i].x;
                     nodeEl.style.top = savedPositions[i].y;
@@ -331,10 +345,11 @@
                 makeDraggable(nodeEl, i);
             }
 
-            checkAdminState(); 
+            checkAdminState();
         }
 
         async function savePositions() {
+            if (!isAdmin) return; // proteção extra: só admin grava posições
             const pos = {};
             mapNodes.forEach((el, index) => {
                 pos[index + 1] = { x: el.style.left, y: el.style.top };
@@ -350,33 +365,33 @@
 
         function makeDraggable(el, id) {
             let isDragging = false;
-            
+
             const startDrag = (e) => {
-                if (!isAdmin) return; 
+                if (!isAdmin) return;
                 if (e.target !== el) return;
                 isDragging = true;
-                e.preventDefault(); 
+                e.preventDefault();
             };
-            
+
             const doDrag = (e) => {
                 if (!isDragging) return;
                 e.preventDefault();
-                
+
                 const container = document.getElementById('map-container');
                 const rect = container.getBoundingClientRect();
                 let clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 let clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                
+
                 let x = clientX - rect.left;
                 let y = clientY - rect.top;
-                
+
                 x = Math.max(0, Math.min(x, rect.width));
                 y = Math.max(0, Math.min(y, rect.height));
-                
+
                 el.style.left = `${(x / rect.width) * 100}%`;
                 el.style.top = `${(y / rect.height) * 100}%`;
             };
-            
+
             const endDrag = () => {
                 if (isDragging) {
                     isDragging = false;
@@ -386,15 +401,17 @@
 
             el.addEventListener('mousedown', startDrag);
             el.addEventListener('touchstart', startDrag, {passive: false});
-            
+
             document.addEventListener('mousemove', doDrag);
             document.addEventListener('touchmove', doDrag, {passive: false});
-            
+
             document.addEventListener('mouseup', endDrag);
             document.addEventListener('touchend', endDrag);
         }
 
         document.getElementById('map-upload').addEventListener('change', function(e) {
+            if (!isAdmin) { showModal("Acesso negado. Faça login como administrador."); e.target.value = ''; return; }
+
             const file = e.target.files[0];
             if (!file) return;
             if (file.size > 2 * 1024 * 1024) { showModal("Imagem demasiado grande. Use menos de 2MB."); return; }
@@ -402,7 +419,7 @@
             const reader = new FileReader();
             reader.onload = async function(event) {
                 const base64 = event.target.result;
-                applyMapImage(base64); 
+                applyMapImage(base64);
                 showModal("A sincronizar mapa com a Sala de Guerra na Nuvem... Aguarde.");
                 try {
                     await fetch(MAP_DB_URL, {
@@ -420,18 +437,18 @@
         // ANÁLISE DE DADOS E GERAÇÃO DE EVENTOS
         // =====================================
         function analisarMudancasParaLogs(newData) {
-            if (!lastNodesData) return; 
+            if (!lastNodesData) return;
             const isQuiral = newData.md === "QUIRAL";
 
             newData.nos.forEach((node, i) => {
                 const prev = lastNodesData[i];
                 if (!prev) return;
-                
+
                 const id = i + 1;
                 let logMsg = null;
-                // Cria um ID único no Firebase usando o Tempo da Partida e o ID do Nó
-                let logIdUnico = `t${newData.tp.replace(':','')}_n${id}`;
-                
+                // ID único combinando tempo de partida + nó + tipo de evento, para não colidir com outros logs
+                let logIdUnico = `t${(newData.tp || '0000').replace(':','')}_n${id}`;
+
                 if (node.owner !== prev.owner && node.online) {
                     if (node.owner === 1) { logMsg = `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`; logIdUnico += "_azul"; }
                     else if (node.owner === 2) { logMsg = `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`; logIdUnico += "_amarelo"; }
@@ -442,8 +459,8 @@
                     if (node.ativo) { logMsg = `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`; logIdUnico += "_reativado"; }
                 }
 
-                // Se gerou uma ação importante, envia diretamente para o Firebase Log!
-                if (logMsg) saveLogToCloud(logIdUnico, logMsg);
+                // Sufixo de timestamp evita colisão de chave se o mesmo evento repetir no mesmo segundo de partida
+                if (logMsg) saveLogToCloud(`${logIdUnico}_${Date.now()}`, logMsg);
             });
         }
 
@@ -489,41 +506,36 @@
                     gameModeCache = data.md || "QUIRAL";
 
                     const isPlaying = (data.st === "ON");
-                    
+
                     document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0";
                     document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0";
                     document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00";
                     document.getElementById('game-mode').innerText = "MODO: " + gameModeCache;
 
                     const badge = document.getElementById('status-badge');
-                    
-                    // Transição Mestre e Auto-Limpeza de Logs na Nuvem
+
+                    // Transição Mestre — agora SEMPRE aditiva, nunca apaga o histórico anterior
                     if (isPlaying) {
                         badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO";
                         badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse";
-                        
+
                         if (lastGameState === "OFF") {
-                            // Quando o jogo começa do zero, substituímos todos os logs pelo Log Mestre Inicial!
-                            const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
-                            const startLog = { t: time, m: `<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!`, ts: Date.now() };
-                            fetch(LOGS_DB_URL, {
-                                method: 'PUT',
-                                body: JSON.stringify({ sys_start: startLog })
-                            });
+                            // Nova rodada: adiciona um marcador de início SEM apagar os logs anteriores
+                            saveLogToCloud(`sys_start_${Date.now()}`, `<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!`);
                         }
                     } else {
                         badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO";
                         badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600";
-                        
+
                         if (lastGameState === "ON") {
-                            saveLogToCloud("sys_stop", `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Central Ociosa.`);
+                            saveLogToCloud(`sys_stop_${Date.now()}`, `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Central Ociosa.`);
                         }
                     }
 
                     if (data.nos && Array.isArray(data.nos)) {
-                        if (isPlaying) analisarMudancasParaLogs(data); 
+                        if (isPlaying) analisarMudancasParaLogs(data);
                         renderVisuals(data);
-                        lastNodesData = JSON.parse(JSON.stringify(data.nos)); 
+                        lastNodesData = JSON.parse(JSON.stringify(data.nos));
                     }
 
                     lastGameState = data.st;
@@ -540,9 +552,9 @@
         // =====================================
         initMap();
         fetchUplinkData();
-        fetchCloudLogs(); // Busca os logs iniciais
-        setInterval(fetchUplinkData, 2000); 
-        setInterval(fetchCloudLogs, 2500);  // Atualiza a vista de logs constantemente
+        fetchCloudLogs();
+        setInterval(fetchUplinkData, 2000);
+        setInterval(fetchCloudLogs, 2500);
     </script>
 </body>
 </html>
