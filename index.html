@@ -2,173 +2,207 @@
 <html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Rede Quiral - Comando Tático</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
         body { font-family: 'Share Tech Mono', monospace; background-color: #050505; color: #fff; }
         .neon-text { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #0ff; }
+        .pulse { animation: pulse-animation 2s infinite; }
+        @keyframes pulse-animation { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
         .bg-chiral { background: linear-gradient(180deg, #1a1a1a 0%, #050505 100%); }
-        .map-node { transition: all 0.3s ease; }
-        .active-blue { background-color: rgba(59, 130, 246, 0.8); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; }
-        .active-yellow { background-color: rgba(234, 179, 8, 0.8); border-color: #fde047; box-shadow: 0 0 15px #eab308; }
-        .inactive-red { background-color: rgba(239, 68, 68, 0.8); border-color: #f87171; box-shadow: 0 0 15px #ef4444; }
-        .offline { background-color: rgba(31, 41, 55, 0.8); border-color: #4b5563; }
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        
+        .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; }
+        .map-node.active-blue { background-color: rgba(59, 130, 246, 0.8); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; color: #fff; }
+        .map-node.active-yellow { background-color: rgba(234, 179, 8, 0.8); border-color: #fde047; box-shadow: 0 0 15px #eab308; color: #000; }
+        .map-node.active-green { background-color: rgba(34, 197, 94, 0.8); border-color: #4ade80; box-shadow: 0 0 15px #22c55e; color: #fff; }
+        .map-node.inactive-red { background-color: rgba(239, 68, 68, 0.8); border-color: #f87171; box-shadow: 0 0 15px #ef4444; color: #fff; }
+        .map-node.offline { background-color: rgba(31, 41, 55, 0.8); border-color: #4b5563; color: #9ca3af; }
     </style>
 </head>
-<body class="bg-chiral min-h-screen p-4">
+<body class="bg-chiral min-h-screen p-2 md:p-4">
 
-    <!-- Login Admin -->
-    <div id="admin-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] hidden">
-        <div class="bg-gray-900 p-6 rounded-lg border border-gray-700 w-80">
-            <h3 class="text-xl text-red-500 font-bold mb-4 text-center">LOGIN ADMIN</h3>
-            <input type="text" id="admin-user" placeholder="Usuário" class="w-full bg-black p-2 mb-2 border border-gray-600 rounded">
-            <input type="password" id="admin-pass" placeholder="Senha" class="w-full bg-black p-2 mb-4 border border-gray-600 rounded">
-            <div class="flex gap-2">
-                <button onclick="document.getElementById('admin-modal').classList.add('hidden')" class="flex-1 py-2 bg-gray-700 rounded">CANCELAR</button>
-                <button onclick="authenticateAdmin()" class="flex-1 py-2 bg-blue-800 rounded">ENTRAR</button>
+    <!-- Modals -->
+    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center shadow-2xl max-w-sm mx-4">
+            <h3 class="text-xl text-yellow-500 mb-2 font-bold">AVISO TÁTICO</h3>
+            <p id="modal-text" class="text-gray-300 mb-4">Mensagem</p>
+            <button onclick="closeModal()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-500">ENTENDIDO</button>
+        </div>
+    </div>
+
+    <div id="admin-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
+            <h3 class="text-xl text-red-500 mb-4 font-bold text-center">ACESSO RESTRITO</h3>
+            <input type="text" id="admin-user" placeholder="Usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-blue-500 focus:outline-none">
+            <input type="password" id="admin-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-blue-500 focus:outline-none">
+            <div class="flex justify-between">
+                <button onclick="closeAdminModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">CANCELAR</button>
+                <button onclick="authenticateAdmin()" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded font-bold border border-blue-600">ENTRAR</button>
             </div>
         </div>
     </div>
 
-    <header class="text-center max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4">
-        <h1 class="text-4xl font-bold text-green-400 tracking-wider">[ COMANDO QUIRAL ]</h1>
-        <div id="status-badge" class="mt-2 px-3 py-1 rounded text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700 inline-block">A ESTABELECER LIGAÇÃO...</div>
+    <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4">
+        <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider">[ COMANDO QUIRAL ]</h1>
+        <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">A ESTABELECER LIGAÇÃO...</div>
     </header>
 
-    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2 space-y-6">
-            <div class="bg-gray-900/80 border border-gray-700 p-6 rounded-lg flex justify-between items-center">
-                <div class="text-center"><h3 class="text-blue-400 font-bold">AZUL</h3><div id="score-azul" class="text-5xl font-bold neon-text">0</div></div>
-                <div class="text-center"><div id="game-time" class="text-4xl font-bold text-white">00:00</div><div id="game-mode" class="text-gray-400 text-sm">MODO: --</div></div>
-                <div class="text-center"><h3 class="text-yellow-400 font-bold">AMARELO</h3><div id="score-amarelo" class="text-5xl font-bold">0</div></div>
+    <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div class="lg:col-span-2 space-y-4 md:space-y-6">
+            <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg shadow-lg relative overflow-hidden">
+                <div class="flex justify-between items-center relative z-10">
+                    <div class="text-center w-1/3"><h3 class="text-lg md:text-xl text-blue-500 font-bold mb-1">AZUL</h3><div id="score-azul" class="text-4xl md:text-6xl font-bold text-blue-400 neon-text">0</div></div>
+                    <div class="text-center w-1/3"><div id="game-time" class="text-2xl md:text-4xl font-bold text-white tracking-widest">00:00</div><p id="game-mode" class="text-gray-400 text-xs md:text-sm mt-1">MODO: --</p></div>
+                    <div class="text-center w-1/3"><h3 class="text-lg md:text-xl text-yellow-500 font-bold mb-1">AMARELA</h3><div id="score-amarelo" class="text-4xl md:text-6xl font-bold text-yellow-400" style="text-shadow: 0 0 10px #a60;">0</div></div>
+                </div>
             </div>
 
-            <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="font-bold text-gray-400">MAPA TÁTICO</h2>
-                    <button id="btn-admin" onclick="document.getElementById('admin-modal').classList.remove('hidden')" class="bg-gray-800 text-xs px-3 py-1 rounded">ADMIN</button>
-                    <label id="btn-upload" class="hidden cursor-pointer bg-blue-900 text-xs px-3 py-1 rounded">
-                        IMPORTAR MAPA<input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden">
-                    </label>
+            <div class="bg-gray-900/80 border border-gray-700 p-2 md:p-4 rounded-lg shadow-lg">
+                <div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
+                    <h2 class="text-sm md:text-base text-gray-400 font-bold">MAPA TÁTICO</h2>
+                    <div class="flex gap-2">
+                        <button id="btn-admin" onclick="openAdminModal()" class="bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">ADMIN</button>
+                        <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">IMPORTAR MAPA<input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden"></label>
+                    </div>
                 </div>
-                <div id="map-container" class="relative w-full aspect-[16/9] bg-black rounded overflow-hidden">
-                    <img id="map-bg" class="w-full h-full object-cover hidden">
+                <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
+                    <img id="map-bg" class="absolute inset-0 w-full h-full object-cover hidden pointer-events-none" alt="Mapa">
+                    <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none">Aguardando mapa...</div>
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
+                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição: Arraste os marcadores para as posições reais.</p>
             </div>
+            <div class="bg-gray-900/50 border border-gray-800 p-3 rounded-lg"><h2 class="text-xs text-gray-500 mb-2 font-bold text-center">RADAR CLÁSSICO</h2><div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2"></div></div>
         </div>
 
-        <div class="bg-gray-900/80 border border-gray-700 rounded-lg flex flex-col h-[400px]">
-            <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg font-bold text-gray-300">REGISTO DE COMBATE</div>
-            <div id="log-box" class="flex-1 p-3 overflow-y-auto space-y-2 text-sm font-sans text-gray-300"></div>
+        <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] lg:h-auto">
+            <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg"><h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> REGISTO DE COMBATE</h2></div>
+            <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans"><div class="text-gray-500 text-center italic mt-10">Aguardando telemetria...</div></div>
+            <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500"><span>UPLINK: <span id="last-update" class="text-green-500">--</span></span><span>DB: FIREBASE</span></div>
         </div>
     </main>
 
     <script>
         const FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
-        let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
-        let lastNodesData = [];
+        let lastGameState = null; let lastNodesData = null; let isAdmin = sessionStorage.getItem('isAdmin') === 'true'; const mapNodes = [];
 
-        // Admin check inicial
-        if(isAdmin) document.getElementById('btn-upload').classList.remove('hidden');
-
+        function showModal(msg) { const m = document.getElementById('modal-box'); document.getElementById('modal-text').innerText = msg; m.classList.remove('hidden'); setTimeout(() => m.classList.remove('opacity-0'), 10); }
+        function closeModal() { const m = document.getElementById('modal-box'); m.classList.add('opacity-0'); setTimeout(() => m.classList.add('hidden'), 300); }
+        function checkAdminState() {
+            const btnAdmin = document.getElementById('btn-admin'); const btnUpload = document.getElementById('btn-upload'); const adminHint = document.getElementById('admin-hint');
+            if (isAdmin) { btnAdmin.classList.add('hidden'); btnUpload.classList.remove('hidden'); adminHint.classList.remove('hidden'); }
+            mapNodes.forEach(node => isAdmin ? node.classList.add('cursor-move') : node.classList.remove('cursor-move'));
+        }
+        function openAdminModal() { const m = document.getElementById('admin-modal'); m.classList.remove('hidden'); setTimeout(() => m.classList.remove('opacity-0'), 10); }
+        function closeAdminModal() { const m = document.getElementById('admin-modal'); m.classList.add('opacity-0'); setTimeout(() => m.classList.add('hidden'), 300); }
         function authenticateAdmin() {
             if (document.getElementById('admin-user').value === 'quiral' && document.getElementById('admin-pass').value === 'felipe123') {
-                isAdmin = true; sessionStorage.setItem('isAdmin', 'true'); 
-                document.getElementById('btn-upload').classList.remove('hidden');
-                document.getElementById('admin-modal').classList.add('hidden');
-            } else { alert("Credenciais incorretas."); }
+                isAdmin = true; sessionStorage.setItem('isAdmin', 'true'); checkAdminState(); closeAdminModal();
+            } else { showModal("Credenciais incorretas."); }
         }
 
-        function addLog(msg) {
-            const box = document.getElementById('log-box');
-            const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
-            box.innerHTML = `<div class="border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r">[${time}] ${msg}</div>` + box.innerHTML;
+        function addLog(htmlMessage) {
+            const box = document.getElementById('log-box'); const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
+            if (box.innerText.includes("Aguardando")) box.innerHTML = '';
+            const entry = document.createElement('div'); entry.className = "border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r animate-fade-in";
+            entry.innerHTML = `<span class="text-gray-500 font-mono">[${time}]</span> ${htmlMessage}`;
+            box.prepend(entry);
         }
 
-        function renderNodes(data) {
+        function applyMapImage(base64Data) {
+            const imgEl = document.getElementById('map-bg');
+            const container = document.getElementById('map-container');
+            const tempImg = new Image();
+            tempImg.onload = function() {
+                container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
+                imgEl.src = base64Data;
+                imgEl.classList.remove('hidden');
+                document.getElementById('map-placeholder').classList.add('hidden');
+            };
+            tempImg.src = base64Data;
+        }
+
+        function initMap() {
             const layer = document.getElementById('map-nodes-layer');
-            if (layer.children.length === 0) {
-                for(let i=1; i<=10; i++) {
-                    const el = document.createElement('div');
-                    el.id = 'node-' + i;
-                    el.className = 'map-node absolute w-6 h-6 rounded-full border-2 text-[10px] flex items-center justify-center';
-                    el.innerText = i;
-                    el.style.left = (i*8) + '%'; el.style.top = '20%';
-                    layer.appendChild(el);
-                }
+            const savedPositions = JSON.parse(localStorage.getItem('quiralMapPositions') || '{}');
+            const savedImage = localStorage.getItem('quiralMapImage');
+            if (savedImage) applyMapImage(savedImage);
+            for(let i=1; i<=10; i++) {
+                const nodeEl = document.createElement('div');
+                nodeEl.id = `map-node-${i}`;
+                nodeEl.className = "map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none bg-gray-800 border-gray-600 text-gray-400 z-10 select-none";
+                nodeEl.innerText = i;
+                if (savedPositions[i]) { nodeEl.style.left = savedPositions[i].x; nodeEl.style.top = savedPositions[i].y; } 
+                else { nodeEl.style.left = `${(i * 9) % 90 + 5}%`; nodeEl.style.top = `10%`; }
+                layer.appendChild(nodeEl); mapNodes.push(nodeEl); makeDraggable(nodeEl);
             }
-            data.nos.forEach((node, i) => {
-                const el = document.getElementById('node-' + (i+1));
-                if (!el) return;
-                el.className = 'map-node absolute w-6 h-6 rounded-full border-2 flex items-center justify-center ' + 
-                               (node.online ? (node.owner == 1 ? 'active-blue' : node.owner == 2 ? 'active-yellow' : 'offline') : 'offline');
+            checkAdminState();
+        }
+
+        function makeDraggable(el) {
+            let isDragging = false;
+            const move = (e) => {
+                if (!isDragging || !isAdmin) return; e.preventDefault();
+                const rect = document.getElementById('map-container').getBoundingClientRect();
+                let x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+                let y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+                el.style.left = `${Math.max(0, Math.min(x / rect.width * 100, 100))}%`;
+                el.style.top = `${Math.max(0, Math.min(y / rect.height * 100, 100))}%`;
+            };
+            el.addEventListener('mousedown', () => isDragging = true);
+            window.addEventListener('mousemove', move);
+            window.addEventListener('mouseup', () => { if(isDragging){ isDragging=false; savePositions(); } });
+        }
+        function savePositions() { const pos = {}; mapNodes.forEach((el, i) => pos[i+1] = {x:el.style.left, y:el.style.top}); localStorage.setItem('quiralMapPositions', JSON.stringify(pos)); }
+        document.getElementById('map-upload').addEventListener('change', function(e) {
+            const reader = new FileReader(); reader.onload = (ev) => { localStorage.setItem('quiralMapImage', ev.target.result); applyMapImage(ev.target.result); };
+            reader.readAsDataURL(e.target.files[0]);
+        });
+
+        function analisarLogs(newData) {
+            if (!lastNodesData) return;
+            newData.nos.forEach((node, i) => {
+                const prev = lastNodesData[i]; if (!prev) return; const id = i + 1;
+                if (node.owner !== prev.owner && node.online) {
+                    if (node.owner === 1) addLog(`Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
+                    else if (node.owner === 2) addLog(`Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELA</span>.`);
+                    else if (node.owner === 0 && prev.owner !== 0) addLog(`Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`);
+                }
             });
         }
 
-        // Upload de Mapa para Nuvem
-        document.getElementById('map-upload').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = async function(event) {
-                await fetch(FIREBASE_URL.replace('.json', '/mapImage.json'), {
-                    method: 'PUT',
-                    body: JSON.stringify(event.target.result)
-                });
-                alert("Mapa enviado para a nuvem!");
-            };
-            reader.readAsDataURL(file);
-        });
-
-        async function updateDashboard() {
-            try {
-                const res = await fetch(FIREBASE_URL);
-                const data = await res.json();
-                if (!data) return;
-
-                // Status Badge
-                const badge = document.getElementById('status-badge');
-                if (data.st === "ON") {
-                    badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO";
-                    badge.className = "mt-2 inline-block px-3 py-1 rounded text-sm font-bold bg-green-900/50 text-green-400 border border-green-500";
-                } else {
-                    badge.innerText = "SISTEMA OCIOSO";
-                    badge.className = "mt-2 inline-block px-3 py-1 rounded text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700";
+        function renderVisuals(data) {
+            data.nos.forEach((node, index) => {
+                const id = index + 1; let cssClass = "offline";
+                if (node.online) {
+                    if (node.owner === 1) cssClass = "active-blue";
+                    else if (node.owner === 2) cssClass = "active-yellow";
                 }
-
-                // Sincronização do Mapa da Nuvem
-                if (data.mapImage) {
-                    const bg = document.getElementById('map-bg');
-                    bg.src = data.mapImage;
-                    bg.classList.remove('hidden');
-                }
-
-                // Placar
-                document.getElementById('score-azul').innerText = data.az || "0";
-                document.getElementById('score-amarelo').innerText = data.am || "0";
-                document.getElementById('game-time').innerText = data.tp || "00:00";
-
-                // Analise de Log
-                if (lastNodesData && lastNodesData.length > 0) {
-                    data.nos.forEach((n, i) => {
-                        if (n.owner !== lastNodesData[i].owner && n.online) {
-                            if (n.owner == 1) addLog(`Nó ${i+1} capturado pelo <span class="text-blue-400">AZUL</span>.`);
-                            else if (n.owner == 2) addLog(`Nó ${i+1} capturado pelo <span class="text-yellow-400">AMARELO</span>.`);
-                            else if (n.owner == 0) addLog(`Nó ${i+1} NEUTRALIZADO.`);
-                        }
-                    });
-                }
-                
-                lastNodesData = data.nos;
-                renderNodes(data);
-
-            } catch(e) { console.error(e); }
+                const mapNode = document.getElementById(`map-node-${id}`);
+                if (mapNode) mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none z-10 select-none ${isAdmin ? 'cursor-move' : ''} ${cssClass}`;
+            });
         }
 
-        setInterval(updateDashboard, 2000);
+        async function fetchUplinkData() {
+            try {
+                const res = await fetch(FIREBASE_URL + "?nocache=" + new Date().getTime()); const data = await res.json();
+                if (data) {
+                    document.getElementById('last-update').innerText = new Date().toLocaleTimeString('pt-PT');
+                    const isPlaying = (data.st === "ON");
+                    document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0";
+                    document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0";
+                    document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00";
+                    if (isPlaying && lastGameState === "OFF") addLog(`<span class="text-green-400 font-bold">SISTEMA ARMADO.</span>`);
+                    if (data.nos) { if (isPlaying) analisarLogs(data); renderVisuals(data); lastNodesData = JSON.parse(JSON.stringify(data.nos)); }
+                    lastGameState = data.st;
+                }
+            } catch (e) { console.error("Uplink error"); }
+        }
+        initMap(); setInterval(fetchUplinkData, 2000);
     </script>
 </body>
 </html>
-```eof
