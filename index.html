@@ -26,7 +26,7 @@
 </head>
 <body class="bg-chiral min-h-screen p-2 md:p-4">
 
-    <!-- Caixa de Mensagem Modal (Substitui os alerts) -->
+    <!-- Caixa de Mensagem Modal -->
     <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center shadow-2xl max-w-sm mx-4">
             <h3 class="text-xl text-yellow-500 mb-2 font-bold">AVISO TÁTICO</h3>
@@ -99,16 +99,15 @@
                 </div>
                 
                 <!-- Área do Mapa (Proporção Dinâmica) -->
-                <!-- Removemos o aspect-ratio fixo do Tailwind para ser controlado pelo JS -->
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
                     <img id="map-bg" class="absolute inset-0 w-full h-full hidden pointer-events-none" alt="Mapa do Campo">
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none">
-                        Aguardando mapa... (Faça login Admin)
+                        Aguardando sincronização de mapa da nuvem...
                     </div>
                     <!-- Os Nós do mapa serão gerados via JS -->
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
-                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição: Arraste os marcadores para as posições reais no terreno. A posição fica salva.</p>
+                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: O mapa e as posições são sincronizados com a nuvem automaticamente.</p>
             </div>
             
             <!-- Radar Clássico (Grelha) -->
@@ -148,6 +147,7 @@
         // VARIÁVEIS GLOBAIS E CONFIGURAÇÕES
         // =====================================
         const FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
+        const MAP_DB_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral_map.json"; // <--- Novo Banco de Dados do Mapa
         
         let lastGameState = null;
         let lastNodesData = null;
@@ -221,13 +221,12 @@
                 sessionStorage.setItem('isAdmin', 'true');
                 checkAdminState();
                 closeAdminModal();
-                showModal("Acesso Restrito concedido. Ferramentas de edição de mapa ativadas.");
+                showModal("Acesso Restrito concedido. Ferramentas de edição de mapa ativadas. As alterações serão salvas na nuvem.");
             } else {
                 showModal("Credenciais incorretas. Acesso negado.");
             }
         }
 
-        // Permite usar a tecla Enter para login
         document.getElementById('admin-pass').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') {
                 authenticateAdmin();
@@ -241,24 +240,21 @@
             const box = document.getElementById('log-box');
             const time = new Date().toLocaleTimeString('pt-PT', { hour12: false });
             
-            // Remove mensagem de placeholder
             if (box.innerText.includes("Aguardando")) box.innerHTML = '';
 
             const entry = document.createElement('div');
             entry.className = "border-l-2 border-gray-600 pl-2 bg-gray-800/30 p-1 rounded-r animate-fade-in";
             entry.innerHTML = `<span class="text-gray-500 font-mono">[${time}]</span> ${htmlMessage}`;
             
-            // Insere no topo
             box.prepend(entry);
 
-            // Mantém apenas os últimos 50 logs para não pesar o navegador
             if (box.children.length > 50) {
                 box.removeChild(box.lastChild);
             }
         }
 
         // =====================================
-        // SISTEMA DO MAPA E ARRASTO
+        // SISTEMA DO MAPA E ARRASTO (NUVEM)
         // =====================================
         const mapNodes = [];
         
@@ -266,7 +262,7 @@
             const imgEl = document.getElementById('map-bg');
             const container = document.getElementById('map-container');
             
-            // Cria imagem fantasma para ler proporções (Aspect Ratio Dinâmico)
+            // Calcula dinamicamente o Aspect Ratio e tira as bordas pretas!
             const tempImg = new Image();
             tempImg.onload = function() {
                 container.style.aspectRatio = `${this.naturalWidth} / ${this.naturalHeight}`;
@@ -277,24 +273,32 @@
             tempImg.src = base64Data;
         }
 
-        function initMap() {
+        async function initMap() {
             const layer = document.getElementById('map-nodes-layer');
-            const savedPositions = JSON.parse(localStorage.getItem('quiralMapPositions') || '{}');
-            const savedImage = localStorage.getItem('quiralMapImage');
+            let savedPositions = {};
+            let savedImage = null;
 
-            // Carrega imagem se existir e aplica Aspect Ratio
-            if (savedImage) {
-                applyMapImage(savedImage);
+            // Busca os dados mestre do Firebase
+            try {
+                const res = await fetch(MAP_DB_URL + "?nocache=" + new Date().getTime());
+                const data = await res.json();
+                if (data) {
+                    savedPositions = data.positions || {};
+                    savedImage = data.image || null;
+                }
+            } catch (err) {
+                console.warn("Nenhum mapa encontrado no servidor. Usando layout vazio.");
             }
 
-            // Cria os 10 marcadores
+            if (savedImage) applyMapImage(savedImage);
+
+            // Cria os 10 marcadores baseados na nuvem
             for(let i=1; i<=10; i++) {
                 const nodeEl = document.createElement('div');
                 nodeEl.id = `map-node-${i}`;
                 nodeEl.className = "map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none bg-gray-800 border-gray-600 text-gray-400 z-10 select-none";
                 nodeEl.innerText = i;
                 
-                // Posição inicial (salva ou calculada)
                 if (savedPositions[i]) {
                     nodeEl.style.left = savedPositions[i].x;
                     nodeEl.style.top = savedPositions[i].y;
@@ -308,15 +312,25 @@
                 makeDraggable(nodeEl, i);
             }
 
-            checkAdminState(); // Verifica se cursores devem ser de arrasto
+            checkAdminState(); 
         }
 
-        function savePositions() {
+        async function savePositions() {
             const pos = {};
             mapNodes.forEach((el, index) => {
                 pos[index + 1] = { x: el.style.left, y: el.style.top };
             });
-            localStorage.setItem('quiralMapPositions', JSON.stringify(pos));
+            
+            // Grava diretamente na nuvem (Firebase)
+            try {
+                await fetch(MAP_DB_URL, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ positions: pos })
+                });
+            } catch (err) {
+                console.error("Erro ao sincronizar posições com a nuvem.");
+            }
         }
 
         function makeDraggable(el, id) {
@@ -326,7 +340,7 @@
                 if (!isAdmin) return; // BLOQUEIO ADMIN
                 if (e.target !== el) return;
                 isDragging = true;
-                e.preventDefault(); // Evita scroll ao tocar no nó
+                e.preventDefault(); 
             };
             
             const doDrag = (e) => {
@@ -341,10 +355,10 @@
                 let x = clientX - rect.left;
                 let y = clientY - rect.top;
                 
-                // Limites do container
                 x = Math.max(0, Math.min(x, rect.width));
                 y = Math.max(0, Math.min(y, rect.height));
                 
+                // Grava a coordenada sempre em percentagem para se adaptar a qualquer ecrã!
                 el.style.left = `${(x / rect.width) * 100}%`;
                 el.style.top = `${(y / rect.height) * 100}%`;
             };
@@ -352,7 +366,7 @@
             const endDrag = () => {
                 if (isDragging) {
                     isDragging = false;
-                    savePositions();
+                    savePositions(); // Atualiza a nuvem ao soltar
                 }
             };
 
@@ -366,24 +380,31 @@
             document.addEventListener('touchend', endDrag);
         }
 
-        // Upload de Imagem do Mapa
+        // Upload de Imagem do Mapa para a NUVEM
         document.getElementById('map-upload').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (!file) return;
             
             if (file.size > 2 * 1024 * 1024) {
-                showModal("Imagem demasiado grande. Por favor, use um mapa com menos de 2MB para garantir a estabilidade do navegador.");
+                showModal("Imagem demasiado grande. Por favor, use um mapa com menos de 2MB.");
                 return;
             }
 
             const reader = new FileReader();
-            reader.onload = function(event) {
+            reader.onload = async function(event) {
                 const base64 = event.target.result;
+                applyMapImage(base64); // Mostra logo na tela para o user
+                
+                showModal("A sincronizar mapa com a Sala de Guerra na Nuvem... Aguarde.");
                 try {
-                    localStorage.setItem('quiralMapImage', base64);
-                    applyMapImage(base64); // Aplica a imagem e ajusta as proporções dinâmicas
+                    await fetch(MAP_DB_URL, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: base64 })
+                    });
+                    showModal("Sincronização Concluída! Todos os dispositivos estão a ver este mapa.");
                 } catch (err) {
-                    showModal("Erro ao guardar o mapa. A memória do navegador pode estar cheia.");
+                    showModal("Erro ao guardar o mapa no servidor.");
                 }
             };
             reader.readAsDataURL(file);
@@ -393,8 +414,7 @@
         // ANÁLISE DE DADOS E LÓGICA DE INTERFACE
         // =====================================
         function analisarLogs(newData) {
-            if (!lastNodesData) return; // Primeira leitura, ignora
-            
+            if (!lastNodesData) return; 
             const isQuiral = newData.md === "QUIRAL";
 
             newData.nos.forEach((node, i) => {
@@ -403,17 +423,12 @@
                 
                 const id = i + 1;
                 
-                // Deteta reconexões (Subiu de Offline para Online)
-                // Omitido para não poluir, mas útil para debug
-
-                // Deteta Mudança de Dono
                 if (node.owner !== prev.owner && node.online) {
                     if (node.owner === 1) addLog(`Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
                     else if (node.owner === 2) addLog(`Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
                     else if (node.owner === 0 && prev.owner !== 0) addLog(`Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`);
                 }
 
-                // Deteta Reativação no Modo Quiral
                 if (isQuiral && node.ativo !== prev.ativo && node.online) {
                     if (node.ativo) addLog(`Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
                 }
@@ -444,12 +459,11 @@
                 // Atualiza Nó no Mapa
                 const mapNode = document.getElementById(`map-node-${id}`);
                 if (mapNode) {
-                    // Manter classes de movimento dinâmicas
                     const cursorClass = isAdmin ? 'cursor-move' : '';
                     mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs touch-none z-10 select-none ${cursorClass} ${cssClass}`;
                 }
 
-                // Renderiza Mini Grid (Radar Clássico)
+                // Renderiza Mini Grid
                 miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
             });
         }
@@ -464,9 +478,6 @@
                     document.getElementById('last-update').innerText = timestamp;
                     gameModeCache = data.md || "QUIRAL";
 
-                    // ========================================================
-                    // REQUISITO: ZERAR PONTOS SE A CENTRAL ESTIVER OCIOSA/OFF
-                    // ========================================================
                     const isPlaying = (data.st === "ON");
                     
                     document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0";
@@ -474,7 +485,6 @@
                     document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00";
                     document.getElementById('game-mode').innerText = "MODO: " + gameModeCache;
 
-                    // Gestão do Badge de Status e Lógica de Início/Fim
                     const badge = document.getElementById('status-badge');
                     if (isPlaying) {
                         badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO";
@@ -492,11 +502,10 @@
                         }
                     }
 
-                    // Processa Mudanças (Logs) e Grafismos
                     if (data.nos && Array.isArray(data.nos)) {
-                        if (isPlaying) analisarLogs(data); // Só gera logs de caixas se o jogo estiver a rodar
+                        if (isPlaying) analisarLogs(data);
                         renderVisuals(data);
-                        lastNodesData = JSON.parse(JSON.stringify(data.nos)); // Clona o estado
+                        lastNodesData = JSON.parse(JSON.stringify(data.nos)); 
                     }
 
                     lastGameState = data.st;
@@ -513,7 +522,7 @@
         // =====================================
         initMap();
         fetchUplinkData();
-        setInterval(fetchUplinkData, 2000); // 2 segundos para maior responsividade tática
+        setInterval(fetchUplinkData, 2000);
     </script>
 </body>
 </html>
