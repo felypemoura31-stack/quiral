@@ -27,13 +27,6 @@
         .map-node.inactive-red { background-color: rgba(239, 68, 68, 0.85); border-color: #f87171; box-shadow: 0 0 15px #ef4444; color: #fff; }
         .map-node.offline { background-color: rgba(31, 41, 55, 0.85); border-color: #4b5563; color: #9ca3af; }
 
-        /* Varredura de radar - elemento de assinatura visual, sutil e temático */
-        #map-scan { background: conic-gradient(from 0deg, rgba(74,222,128,0.16), transparent 18%, transparent 100%); mix-blend-mode: screen; }
-        @media (prefers-reduced-motion: no-preference) {
-            #map-scan { animation: radar-sweep 6s linear infinite; }
-        }
-        @keyframes radar-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
         button:focus-visible, label:focus-visible, input:focus-visible, [tabindex]:focus-visible {
             outline: 2px solid #4ade80; outline-offset: 2px;
         }
@@ -118,7 +111,6 @@
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none text-center px-6">
                         Aguardando sincronização de mapa da nuvem...
                     </div>
-                    <div id="map-scan" class="absolute inset-0 pointer-events-none"></div>
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
                 <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste um nó para reposicioná-lo. As posições e o mapa são sincronizados com a nuvem automaticamente.</p>
