@@ -114,7 +114,7 @@
                 </div>
 
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
-                    <img id="map-bg" class="absolute inset-0 w-full h-full object-cover hidden pointer-events-none" alt="Mapa do Campo">
+                    <img id="map-bg" class="absolute inset-0 w-full h-full object-contain hidden pointer-events-none" alt="Mapa do Campo">
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none text-center px-6">
                         Aguardando sincronização de mapa da nuvem...
                     </div>
@@ -377,8 +377,14 @@
             });
         }
 
+        function applyContainerAspect(w, h) {
+            if (!w || !h) return;
+            document.getElementById('map-container').style.aspectRatio = w + ' / ' + h;
+        }
+
         function setMapImage(dataUrl) {
             const img = document.getElementById('map-bg');
+            img.onload = () => applyContainerAspect(img.naturalWidth, img.naturalHeight);
             img.src = dataUrl;
             img.classList.remove('hidden');
             document.getElementById('map-placeholder').classList.add('hidden');
