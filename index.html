@@ -120,6 +120,7 @@
                 <div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
                     <h2 class="text-sm md:text-base text-gray-400 font-bold">MAPA TÁTICO <span id="node-count" class="text-gray-600 font-normal"></span></h2>
                     <div class="flex gap-2">
+                        <button id="btn-salvar-layout" onclick="salvarLayout()" class="hidden bg-green-900 hover:bg-green-800 text-xs text-green-200 px-3 py-1 rounded border border-green-600 transition-colors">SALVAR LAYOUT</button>
                         <button id="btn-reset-logs" class="hidden bg-red-950 hover:bg-red-900 text-xs text-red-300 px-3 py-1 rounded border border-red-800 transition-colors">LIMPAR REGISTOS</button>
                         <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
                             CONTAS
@@ -138,7 +139,7 @@
                     </div>
                     <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
                 </div>
-                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste um nó para reposicioná-lo. As posições e o mapa são sincronizados com a nuvem automaticamente.</p>
+                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós para reposicionar e depois toque em "SALVAR LAYOUT" para publicar as novas posições para todos.</p>
             </div>
 
             <!-- Radar Clássico (Grelha) -->
@@ -313,6 +314,7 @@
             document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-salvar-layout').classList.toggle('hidden', !isAdmin);
 
             const loginBtn = document.getElementById('btn-login');
             const badge = document.getElementById('session-badge');
@@ -369,6 +371,33 @@
             }
         }
 
+        let layoutPendente = false;
+
+        function marcarLayoutPendente() {
+            layoutPendente = true;
+            const btn = document.getElementById('btn-salvar-layout');
+            btn.textContent = 'SALVAR LAYOUT ●';
+            btn.classList.add('animate-pulse');
+        }
+
+        async function salvarLayout() {
+            if (!isAdmin) return;
+            const btn = document.getElementById('btn-salvar-layout');
+            btn.disabled = true;
+            btn.classList.remove('animate-pulse');
+            btn.textContent = 'SALVANDO...';
+            try {
+                await fetch(`${FIREBASE_BASE}/quiral_config/positions.json`, { method: 'PUT', body: JSON.stringify(nodePositions) });
+                layoutPendente = false;
+                btn.textContent = 'SALVO ✔';
+                setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 1500);
+            } catch (err) {
+                console.error('Falha ao salvar layout', err);
+                btn.textContent = 'ERRO — TENTAR DE NOVO';
+                btn.disabled = false;
+            }
+        }
+
         function attachNodeInteraction(el, id) {
             let dragging = false, moved = false, startX = 0, startY = 0;
             el.addEventListener('pointerdown', (e) => {
@@ -388,15 +417,13 @@
                 el.style.left = x + '%';
                 el.style.top = y + '%';
             });
-            el.addEventListener('pointerup', async () => {
+            el.addEventListener('pointerup', () => {
                 if (dragging) {
                     dragging = false;
                     if (moved) {
                         const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
                         nodePositions[id] = { x, y };
-                        try {
-                            await fetch(`${FIREBASE_BASE}/quiral_config/positions/${id}.json`, { method: 'PUT', body: JSON.stringify({ x, y }) });
-                        } catch (err) { console.error('Falha ao salvar posição do nó', err); }
+                        marcarLayoutPendente();
                         return;
                     }
                 }
@@ -904,7 +931,7 @@
                 const res = await fetch(CONFIG_URL + "?nocache=" + Date.now());
                 const data = await res.json();
                 if (!data) return;
-                if (data.positions) {
+                if (data.positions && !layoutPendente) {
                     nodePositions = data.positions;
                     // Se os nós do mapa já tiverem sido criados antes desta resposta chegar
                     // (corrida entre fetchConfig e fetchUplinkData), reposiciona os que já existem.
@@ -952,6 +979,7 @@
             setInterval(fetchCloudLogs, 2500);
             setInterval(tickConnDetail, 1000);
             setInterval(() => { if (session) fetchComandos(); }, 3000);
+            setInterval(fetchConfig, 8000);
         }
 
         // =====================================
