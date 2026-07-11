@@ -43,27 +43,52 @@
         </div>
     </div>
 
-    <!-- Admin Login Modal -->
-    <div id="admin-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+    <!-- Login (admin / comandante / jogador) -->
+    <div id="login-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
             <h3 class="text-xl text-red-500 mb-4 font-bold text-center">ACESSO RESTRITO</h3>
-            <input type="text" id="admin-user" placeholder="Usuário" autocomplete="off" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-blue-500 focus:outline-none">
-            <input type="password" id="admin-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-blue-500 focus:outline-none" onkeydown="if(event.key==='Enter') authenticateAdmin()">
+            <input type="text" id="login-user" placeholder="Usuário" autocomplete="off" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-blue-500 focus:outline-none">
+            <input type="password" id="login-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-blue-500 focus:outline-none" onkeydown="if(event.key==='Enter') autenticar()">
+            <p id="login-erro" class="text-red-400 text-xs mb-3 hidden">Usuário ou senha incorretos.</p>
             <div class="flex justify-between">
-                <button onclick="closeAdminModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">CANCELAR</button>
-                <button onclick="authenticateAdmin()" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded font-bold border border-blue-600">ENTRAR</button>
+                <button onclick="closeLoginModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">CANCELAR</button>
+                <button onclick="autenticar()" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded font-bold border border-blue-600">ENTRAR</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Painel de contas (admin) -->
+    <div id="contas-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-md mx-4 w-full max-h-[85vh] overflow-y-auto">
+            <h3 class="text-lg text-gray-200 mb-4 font-bold text-center">CONTAS DE ACESSO</h3>
+            <div id="contas-lista" class="space-y-4"></div>
+            <button onclick="closeContasModal()" class="w-full mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">FECHAR</button>
+        </div>
+    </div>
+
+    <!-- Ordem tática (comandante) -->
+    <div id="ordem-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-xs mx-4 w-full text-center">
+            <h3 id="ordem-titulo" class="text-lg text-gray-200 mb-4 font-bold">NÓ 1</h3>
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <button onclick="emitirOrdem('atacar')" class="px-3 py-3 bg-red-900 hover:bg-red-800 text-white rounded font-bold border border-red-600">⚔ ATACAR</button>
+                <button onclick="emitirOrdem('defender')" class="px-3 py-3 bg-blue-900 hover:bg-blue-800 text-white rounded font-bold border border-blue-600">🛡 DEFENDER</button>
+            </div>
+            <button onclick="emitirOrdem(null)" class="w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-sm border border-gray-600 mb-2">Cancelar ordem</button>
+            <button onclick="closeOrdemModal()" class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm border border-gray-600">Fechar</button>
         </div>
     </div>
 
     <!-- Header -->
     <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4 relative">
         <button id="btn-fullscreen" title="Ecrã inteiro" class="absolute right-0 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">⛶</button>
+        <button id="btn-login" onclick="openLoginModal()" title="Entrar" class="absolute left-0 top-0 text-gray-500 hover:text-white text-xs px-2 py-1 border border-gray-700 rounded">🔒 ENTRAR</button>
         <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider">[ COMANDO QUIRAL ]</h1>
         <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">
             A ESTABELECER LIGAÇÃO...
         </div>
         <div id="conn-detail" class="text-[10px] text-gray-600 mt-1"></div>
+        <div id="session-badge" class="hidden mt-2 text-xs"></div>
     </header>
 
     <!-- Main Dashboard -->
@@ -96,8 +121,8 @@
                     <h2 class="text-sm md:text-base text-gray-400 font-bold">MAPA TÁTICO <span id="node-count" class="text-gray-600 font-normal"></span></h2>
                     <div class="flex gap-2">
                         <button id="btn-reset-logs" class="hidden bg-red-950 hover:bg-red-900 text-xs text-red-300 px-3 py-1 rounded border border-red-800 transition-colors">LIMPAR REGISTOS</button>
-                        <button id="btn-admin" onclick="openAdminModal()" class="bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
-                            ADMIN
+                        <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
+                            CONTAS
                         </button>
                         <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">
                             IMPORTAR MAPA
@@ -153,17 +178,32 @@
         // CONFIGURAÇÃO E ESTADO GLOBAL
         // =====================================
         const FIREBASE_BASE = "https://quiral-f97a2-default-rtdb.firebaseio.com";
-        const GAME_URL   = FIREBASE_BASE + "/quiral.json";        // estado do jogo — escrito pela central ESP32
-        const CONFIG_URL = FIREBASE_BASE + "/quiral_config.json"; // posições dos nós + mapa — escrito por esta página
-        const LOGS_URL   = FIREBASE_BASE + "/quiral_logs.json";   // registo de combate — escrito por qualquer espectador
+        const GAME_URL     = FIREBASE_BASE + "/quiral.json";          // estado do jogo — escrito pela central ESP32
+        const CONFIG_URL   = FIREBASE_BASE + "/quiral_config.json";   // posições dos nós + mapa — escrito por esta página
+        const LOGS_URL     = FIREBASE_BASE + "/quiral_logs.json";     // registo de combate — escrito por qualquer espectador
+        const AUTH_URL     = FIREBASE_BASE + "/quiral_auth.json";     // contas (usuário + hash de senha) — só lido/escrito por esta página
+        const COMANDOS_URL = FIREBASE_BASE + "/quiral_comandos.json"; // ordens de ataque/defesa por equipa
 
-        // Credenciais fixas do modo administrador. Isto é apenas um bloqueio simples
-        // contra toques acidentais — qualquer pessoa com acesso ao código-fonte desta
-        // página (View Source) consegue ver estes valores. Não trate isto como segurança real.
-        const ADMIN_USER = "comando";
-        const ADMIN_PASS = "quiral2026";
+        // ATENÇÃO: sem um backend próprio, isto trava o acesso pela INTERFACE do site
+        // (jogador comum não vai ver nem editar nada disso), mas não é criptograficamente
+        // à prova de alguém técnico lendo as requisições de rede diretamente. Para esse
+        // nível de jogo de campo, isso é suficiente — só não trate como segurança forte.
 
-        let isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+        const ROLE_KEYS = ['admin', 'comandante_azul', 'jogador_azul', 'comandante_amarelo', 'jogador_amarelo'];
+        const ROLE_LABELS = {
+            admin: 'Administrador',
+            comandante_azul: 'Comandante Azul',
+            jogador_azul: 'Jogador Azul',
+            comandante_amarelo: 'Comandante Amarelo',
+            jogador_amarelo: 'Jogador Amarelo'
+        };
+        function roleTeamOf(key) { return key.endsWith('_azul') ? 'azul' : key.endsWith('_amarelo') ? 'amarelo' : null; }
+        function roleTypeOf(key) { return key.startsWith('comandante') ? 'comandante' : key.startsWith('jogador') ? 'jogador' : 'admin'; }
+
+        let session = null;
+        try { session = JSON.parse(sessionStorage.getItem('quiral_session')); } catch (err) {}
+        let isAdmin = !!(session && session.role === 'admin');
+
         let lastGameState = null;
         let lastFullData = null;
         let lastNodesData = null;
@@ -172,7 +212,17 @@
         let lastSuccessfulFetch = 0;
         let currentNodeCount = 0;
         let nodePositions = {};
+        let comandosAtuais = {};   // ordens da equipa do usuário logado: { [nodeId]: {ordem, ts, autor} }
+        let ordemNodeAlvo = null;  // nó selecionado no modal de ordem
         const renderedLogKeys = new Set();
+
+        // =====================================
+        // CRIPTOGRAFIA SIMPLES (SHA-256) PARA AS SENHAS
+        // =====================================
+        async function sha256(texto) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
 
         // =====================================
         // MODAL GENÉRICO
@@ -191,48 +241,95 @@
         }
 
         // =====================================
-        // ADMIN: LOGIN / LOGOUT
+        // LOGIN / SESSÃO (admin, comandante, jogador)
         // =====================================
-        function openAdminModal() {
-            if (isAdmin) { logoutAdmin(); return; }
-            document.getElementById('admin-user').value = '';
-            document.getElementById('admin-pass').value = '';
-            const box = document.getElementById('admin-modal');
+        function openLoginModal() {
+            if (session) { logout(); return; }
+            document.getElementById('login-user').value = '';
+            document.getElementById('login-pass').value = '';
+            document.getElementById('login-erro').classList.add('hidden');
+            const box = document.getElementById('login-modal');
             box.classList.remove('hidden');
             requestAnimationFrame(() => box.classList.remove('opacity-0'));
-            document.getElementById('admin-user').focus();
+            document.getElementById('login-user').focus();
         }
-        function closeAdminModal() {
-            const box = document.getElementById('admin-modal');
+        function closeLoginModal() {
+            const box = document.getElementById('login-modal');
             box.classList.add('opacity-0');
             setTimeout(() => box.classList.add('hidden'), 200);
         }
-        function authenticateAdmin() {
-            const u = document.getElementById('admin-user').value.trim();
-            const p = document.getElementById('admin-pass').value;
-            if (u === ADMIN_USER && p === ADMIN_PASS) {
-                isAdmin = true;
-                sessionStorage.setItem('isAdmin', 'true');
-                closeAdminModal();
-                applyAdminUI();
+
+        async function tentarLogin(userDigitado, senha) {
+            const res = await fetch(AUTH_URL + '?nocache=' + Date.now());
+            const contas = (await res.json()) || {};
+            const hash = await sha256(senha);
+
+            // Bootstrap: enquanto ninguém configurou a conta admin, aceita o padrão de fábrica
+            // e já grava a versão definitiva (com hash) no banco.
+            if (!contas.admin) {
+                const hashPadrao = await sha256('quiral2026');
+                if (userDigitado.toLowerCase() === 'admin' && hash === hashPadrao) {
+                    const conta = { user: 'admin', passHash: hashPadrao, role: 'admin', team: null, label: ROLE_LABELS.admin };
+                    await fetch(FIREBASE_BASE + '/quiral_auth/admin.json', { method: 'PUT', body: JSON.stringify(conta) });
+                    return conta;
+                }
+            }
+
+            for (const key of ROLE_KEYS) {
+                const conta = contas[key];
+                if (conta && conta.user && conta.user.toLowerCase() === userDigitado.toLowerCase() && conta.passHash === hash) {
+                    return conta;
+                }
+            }
+            return null;
+        }
+
+        async function autenticar() {
+            const u = document.getElementById('login-user').value.trim();
+            const p = document.getElementById('login-pass').value;
+            if (!u || !p) return;
+            const conta = await tentarLogin(u, p);
+            if (conta) {
+                session = { role: conta.role, team: conta.team || null, label: conta.label || conta.user, user: conta.user };
+                sessionStorage.setItem('quiral_session', JSON.stringify(session));
+                closeLoginModal();
+                applySessionUI();
+                fetchComandos();
             } else {
-                showModal('ACESSO NEGADO', 'Utilizador ou senha incorretos.');
+                document.getElementById('login-erro').classList.remove('hidden');
             }
         }
-        function logoutAdmin() {
-            isAdmin = false;
-            sessionStorage.removeItem('isAdmin');
-            applyAdminUI();
+
+        function logout() {
+            session = null;
+            sessionStorage.removeItem('quiral_session');
+            applySessionUI();
         }
-        function applyAdminUI() {
+
+        function applySessionUI() {
+            isAdmin = !!(session && session.role === 'admin');
+
             document.getElementById('btn-upload').classList.toggle('hidden', !isAdmin);
             document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin);
-            const btn = document.getElementById('btn-admin');
-            btn.innerText = isAdmin ? 'SAIR' : 'ADMIN';
-            btn.classList.toggle('bg-red-900', isAdmin);
-            btn.classList.toggle('border-red-600', isAdmin);
+            document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin);
+
+            const loginBtn = document.getElementById('btn-login');
+            const badge = document.getElementById('session-badge');
+            if (session) {
+                loginBtn.textContent = 'SAIR';
+                const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
+                badge.className = 'mt-2 text-xs ' + cor;
+                badge.textContent = 'Conectado: ' + (session.label || session.user);
+                badge.classList.remove('hidden');
+            } else {
+                loginBtn.textContent = '🔒 ENTRAR';
+                badge.classList.add('hidden');
+                comandosAtuais = {};
+            }
+
             document.querySelectorAll('.map-node').forEach(el => el.classList.toggle('admin-mode', isAdmin));
+            renderComandosOverlay();
         }
 
         // =====================================
@@ -259,6 +356,10 @@
                 el.style.left = pos.x + '%';
                 el.style.top = pos.y + '%';
                 el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline' + (isAdmin ? ' admin-mode' : '');
+                const badge = document.createElement('span');
+                badge.id = `ordem-badge-${i}`;
+                badge.className = 'ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border border-black';
+                el.appendChild(badge);
                 attachNodeInteraction(el, i);
                 layer.appendChild(el);
             }
@@ -295,8 +396,13 @@
                         return;
                     }
                 }
-                if (!moved) showNodeDetail(id);
+                if (!moved) onNodeTap(id);
             });
+        }
+
+        function onNodeTap(id) {
+            if (session && session.role === 'comandante') { openOrdemModal(id); return; }
+            showNodeDetail(id);
         }
 
         function showNodeDetail(id) {
@@ -309,8 +415,161 @@
                 if (isQuiral) extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>';
                 else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>';
             }
+            let ordemInfo = '';
+            if (session && session.team && comandosAtuais[id]) {
+                const o = comandosAtuais[id];
+                ordemInfo = '<br><br><span class="text-[10px] text-gray-500">Ordem da equipa:</span> ' + (o.ordem === 'atacar' ? '<span class="text-red-400 font-bold">⚔ ATACAR</span>' : '<span class="text-blue-400 font-bold">🛡 DEFENDER</span>');
+            }
             const hint = isAdmin ? '<br><br><span class="text-[10px] text-gray-500">Arraste o nó no mapa para reposicionar.</span>' : '';
-            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra + hint);
+            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra + ordemInfo + hint);
+        }
+
+        // =====================================
+        // ORDENS TÁTICAS (comandante emite, sua equipa vê)
+        // =====================================
+        function openOrdemModal(id) {
+            ordemNodeAlvo = id;
+            document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
+            const box = document.getElementById('ordem-modal');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
+        }
+        function closeOrdemModal() {
+            const box = document.getElementById('ordem-modal');
+            box.classList.add('opacity-0');
+            setTimeout(() => box.classList.add('hidden'), 200);
+            ordemNodeAlvo = null;
+        }
+        async function emitirOrdem(tipo) {
+            if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
+            const id = ordemNodeAlvo;
+            const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/${id}.json`;
+            try {
+                if (tipo) {
+                    await fetch(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) });
+                } else {
+                    await fetch(path, { method: 'DELETE' });
+                }
+                await fetchComandos();
+            } catch (err) { console.error('Falha ao emitir ordem', err); }
+            closeOrdemModal();
+        }
+
+        async function fetchComandos() {
+            if (!session || !session.team) { comandosAtuais = {}; renderComandosOverlay(); return; }
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_comandos/${session.team}.json?nocache=` + Date.now());
+                comandosAtuais = (await res.json()) || {};
+            } catch (err) { console.error('Falha ao buscar ordens', err); }
+            renderComandosOverlay();
+        }
+
+        function renderComandosOverlay() {
+            document.querySelectorAll('.ordem-badge').forEach(b => { b.textContent = ''; b.classList.add('hidden'); b.classList.remove('bg-red-600', 'bg-blue-600'); });
+            if (!session || !session.team) return;
+            Object.keys(comandosAtuais).forEach(id => {
+                const badge = document.getElementById(`ordem-badge-${id}`);
+                if (!badge) return;
+                const o = comandosAtuais[id];
+                badge.textContent = o.ordem === 'atacar' ? '⚔' : '🛡';
+                badge.classList.remove('hidden');
+                badge.classList.add(o.ordem === 'atacar' ? 'bg-red-600' : 'bg-blue-600');
+            });
+        }
+
+        // =====================================
+        // GESTÃO DE CONTAS (admin)
+        // =====================================
+        async function openContasModal() {
+            if (!isAdmin) return;
+            const box = document.getElementById('contas-modal');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            await renderContasList();
+        }
+        function closeContasModal() {
+            const box = document.getElementById('contas-modal');
+            box.classList.add('opacity-0');
+            setTimeout(() => box.classList.add('hidden'), 200);
+        }
+
+        async function renderContasList() {
+            const container = document.getElementById('contas-lista');
+            container.innerHTML = '<p class="text-gray-500 text-xs text-center">Carregando...</p>';
+            let contas = {};
+            try {
+                const res = await fetch(AUTH_URL + '?nocache=' + Date.now());
+                contas = (await res.json()) || {};
+            } catch (err) { console.error(err); }
+
+            container.innerHTML = '';
+            ROLE_KEYS.forEach(key => {
+                const conta = contas[key] || {};
+                const isAdminRow = key === 'admin';
+                const row = document.createElement('div');
+                row.className = 'border border-gray-700 rounded p-3';
+                row.innerHTML = `
+                    <p class="text-xs text-gray-400 font-bold mb-2">${ROLE_LABELS[key]}</p>
+                    <input type="text" id="conta-user-${key}" value="${conta.user || ''}" placeholder="usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">
+                    ${isAdminRow ? `<input type="password" id="conta-senha-atual-${key}" placeholder="senha atual" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">` : ''}
+                    <input type="password" id="conta-pass-${key}" placeholder="nova senha (em branco = manter)" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">
+                    <button onclick="salvarConta('${key}')" class="w-full bg-green-800 hover:bg-green-700 text-white text-xs py-2 rounded border border-green-600">SALVAR</button>
+                    <p id="conta-msg-${key}" class="text-[10px] mt-1 hidden"></p>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        async function salvarConta(key) {
+            const userInput = document.getElementById(`conta-user-${key}`);
+            const passInput = document.getElementById(`conta-pass-${key}`);
+            const msg = document.getElementById(`conta-msg-${key}`);
+            const novoUser = userInput.value.trim();
+            const novaSenha = passInput.value;
+
+            function falhar(texto) {
+                msg.textContent = texto;
+                msg.className = 'text-[10px] mt-1 text-red-400';
+                msg.classList.remove('hidden');
+            }
+
+            if (!novoUser) { falhar('Informe um usuário.'); return; }
+
+            try {
+                const res = await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json?nocache=` + Date.now());
+                const contaAtual = (await res.json()) || {};
+
+                if (key === 'admin' && contaAtual.passHash) {
+                    const senhaAtualInput = document.getElementById('conta-senha-atual-admin');
+                    const senhaAtual = senhaAtualInput.value;
+                    if (!senhaAtual) { falhar('Informe a senha atual para confirmar.'); return; }
+                    const hashDigitado = await sha256(senhaAtual);
+                    if (hashDigitado !== contaAtual.passHash) { falhar('Senha atual incorreta.'); return; }
+                }
+
+                const passHash = novaSenha ? await sha256(novaSenha) : contaAtual.passHash;
+                if (!passHash) { falhar('Defina uma senha (esta conta ainda não tem nenhuma).'); return; }
+
+                const usuarioAntigo = contaAtual.user;
+                const novaConta = { user: novoUser, passHash, role: roleTypeOf(key), team: roleTeamOf(key), label: ROLE_LABELS[key] };
+                await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json`, { method: 'PUT', body: JSON.stringify(novaConta) });
+
+                msg.textContent = 'Salvo!';
+                msg.className = 'text-[10px] mt-1 text-green-400';
+                msg.classList.remove('hidden');
+                passInput.value = '';
+                if (key === 'admin') { const s = document.getElementById('conta-senha-atual-admin'); if (s) s.value = ''; }
+
+                // Se essa era a própria conta logada, atualiza a sessão local para não deslogar
+                if (session && usuarioAntigo && session.user && session.user.toLowerCase() === usuarioAntigo.toLowerCase()) {
+                    session.user = novoUser;
+                    sessionStorage.setItem('quiral_session', JSON.stringify(session));
+                    applySessionUI();
+                }
+            } catch (err) {
+                console.error('Falha ao salvar conta', err);
+                falhar('Erro ao salvar.');
+            }
         }
 
         function renderVisuals(data) {
@@ -460,14 +719,20 @@
             document.getElementById('log-box').innerHTML = '';
             document.getElementById('log-box').dataset.empty = '1';
             try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+            try { await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+            comandosAtuais = {};
+            renderComandosOverlay();
             saveLogToCloud('sys_start', '<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!');
         }
 
         function wireResetLogsButton() {
             document.getElementById('btn-reset-logs').addEventListener('click', async () => {
-                if (!confirm('Limpar todos os registos de combate atuais?')) return;
+                if (!confirm('Limpar todos os registos de combate E as ordens táticas atuais?')) return;
                 try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+                try { await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
                 renderedLogKeys.clear();
+                comandosAtuais = {};
+                renderComandosOverlay();
                 document.getElementById('log-box').innerHTML = '';
                 document.getElementById('log-box').dataset.empty = '1';
             });
@@ -499,25 +764,32 @@
             const scoredBlue = currentAzul > lastScoreAzul;
             const scoredYellow = currentAmarelo > lastScoreAmarelo;
             const tp = (newData.tp || '00:00').replace(':', '');
+            const placar = ` <span class="text-gray-500">[${currentAzul}x${currentAmarelo}]</span>`;
 
             newData.nos.forEach((node, i) => {
                 const prev = lastNodesData[i];
                 if (!prev) return;
                 const id = i + 1;
 
+                // Conectividade do nó (independe do modo de jogo)
+                if (node.online !== prev.online) {
+                    if (node.online) saveLogToCloud(`n${id}_on_${tp}`, `Nó ${id} <span class="text-green-400">voltou a ficar em linha</span>.`);
+                    else saveLogToCloud(`n${id}_off_${tp}`, `Nó ${id} <span class="text-gray-400 font-bold">perdeu conexão (offline)</span>.`);
+                }
+
                 if (!isQuiral && node.owner !== prev.owner && node.online) {
-                    if (node.owner === 1) saveLogToCloud(`n${id}_own1_${tp}`, `Nó ${id} dominado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
-                    else if (node.owner === 2) saveLogToCloud(`n${id}_own2_${tp}`, `Nó ${id} dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
-                    else if (node.owner === 0 && prev.owner !== 0) saveLogToCloud(`n${id}_neutro_${tp}`, `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.`);
+                    if (node.owner === 1) saveLogToCloud(`n${id}_own1_${tp}`, `Nó ${id} dominado pelo <span class="text-blue-400 font-bold">AZUL</span>.${placar}`);
+                    else if (node.owner === 2) saveLogToCloud(`n${id}_own2_${tp}`, `Nó ${id} dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.${placar}`);
+                    else if (node.owner === 0 && prev.owner !== 0) saveLogToCloud(`n${id}_neutro_${tp}`, `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.${placar}`);
                 }
 
                 if (isQuiral && node.ativo !== prev.ativo && node.online) {
                     if (node.ativo) {
                         saveLogToCloud(`n${id}_reativado_${tp}`, `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
                     } else {
-                        if (scoredBlue && !scoredYellow) saveLogToCloud(`n${id}_capaz_${tp}`, `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.`);
-                        else if (scoredYellow && !scoredBlue) saveLogToCloud(`n${id}_capam_${tp}`, `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.`);
-                        else saveLogToCloud(`n${id}_cap_${tp}`, `Nó ${id} <span class="text-red-400 font-bold">CAPTURADO</span>.`);
+                        if (scoredBlue && !scoredYellow) saveLogToCloud(`n${id}_capaz_${tp}`, `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.${placar}`);
+                        else if (scoredYellow && !scoredBlue) saveLogToCloud(`n${id}_capam_${tp}`, `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.${placar}`);
+                        else saveLogToCloud(`n${id}_cap_${tp}`, `Nó ${id} <span class="text-red-400 font-bold">CAPTURADO</span>.${placar}`);
                     }
                 }
             });
@@ -576,7 +848,13 @@
                 if (isPlaying && lastGameState !== "ON") {
                     await startNewMatchLogs();
                 } else if (!isPlaying && lastGameState === "ON") {
-                    saveLogToCloud('sys_stop', '<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Central Ociosa.');
+                    const finalAzul = parseInt(data.az || 0);
+                    const finalAmarelo = parseInt(data.am || 0);
+                    let vencedor;
+                    if (finalAzul > finalAmarelo) vencedor = '<span class="text-blue-400 font-bold">EQUIPA AZUL VENCEU</span>';
+                    else if (finalAmarelo > finalAzul) vencedor = '<span class="text-yellow-400 font-bold">EQUIPA AMARELA VENCEU</span>';
+                    else vencedor = '<span class="text-gray-300 font-bold">EMPATE</span>';
+                    saveLogToCloud('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Placar final: <span class="text-gray-300">${finalAzul}x${finalAmarelo}</span> — ${vencedor}`);
                 }
 
                 if (data.nos && Array.isArray(data.nos)) {
@@ -619,20 +897,29 @@
             wireResetLogsButton();
             wireJumpLatest();
             wireFullscreen();
-            applyAdminUI();
+            applySessionUI();
             document.getElementById('log-box').dataset.empty = '1';
         }
 
         // =====================================
         // BOOT DO SISTEMA WEB
         // =====================================
-        initMap();
-        fetchConfig();
-        fetchUplinkData();
-        fetchCloudLogs();
-        setInterval(fetchUplinkData, 2000);
-        setInterval(fetchCloudLogs, 2500);
-        setInterval(tickConnDetail, 1000);
+        function bootDashboard() {
+            initMap();
+            fetchConfig();
+            fetchUplinkData();
+            fetchCloudLogs();
+            if (session) fetchComandos();
+            setInterval(fetchUplinkData, 2000);
+            setInterval(fetchCloudLogs, 2500);
+            setInterval(tickConnDetail, 1000);
+            setInterval(() => { if (session) fetchComandos(); }, 3000);
+        }
+
+        // =====================================
+        // BOOT DO SISTEMA WEB
+        // =====================================
+        bootDashboard();
     </script>
 </body>
 </html>
