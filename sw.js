@@ -1,6 +1,6 @@
 const CACHE_NAME = 'quiral-shell-v1';
 const SHELL_FILES = [
-  './comando_quiral.html',
+  './index.html',
   './manifest.json',
   './icon.svg'
 ];
