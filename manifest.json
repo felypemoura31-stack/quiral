@@ -1,0 +1,13 @@
+{
+  "name": "Comando Quiral",
+  "short_name": "Quiral",
+  "description": "Painel tático de comando da Rede Quiral",
+  "start_url": "./comando_quiral.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
