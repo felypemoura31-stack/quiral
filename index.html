@@ -371,6 +371,26 @@
             }
         }
 
+        // O Firebase RTDB converte automaticamente um objeto em ARRAY se todas as
+        // chaves forem numéricas (ex: {"1":..,"2":..}), preenchendo os "buracos"
+        // com null. Isso quebra qualquer forEach que não espera null no meio.
+        // Solução: nunca usar o id do nó puro como chave — sempre prefixado.
+        function toFirebaseKeyed(obj) {
+            const out = {};
+            Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; });
+            return out;
+        }
+        function fromFirebaseKeyed(raw) {
+            const out = {};
+            if (!raw) return out;
+            Object.keys(raw).forEach(k => {
+                if (raw[k] == null) return; // ignora buracos que viraram null num array
+                const id = String(k).replace(/^n/, '');
+                out[id] = raw[k];
+            });
+            return out;
+        }
+
         let layoutPendente = false;
 
         function marcarLayoutPendente() {
@@ -387,7 +407,7 @@
             btn.classList.remove('animate-pulse');
             btn.textContent = 'SALVANDO...';
             try {
-                await fetch(`${FIREBASE_BASE}/quiral_config/positions.json`, { method: 'PUT', body: JSON.stringify(nodePositions) });
+                await fetch(`${FIREBASE_BASE}/quiral_config/positions.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) });
                 layoutPendente = false;
                 btn.textContent = 'SALVO ✔';
                 setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 1500);
@@ -482,7 +502,7 @@
         async function emitirOrdem(tipo) {
             if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
             const id = ordemNodeAlvo;
-            const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/${id}.json`;
+            const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
             try {
                 if (tipo) {
                     await fetch(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) });
@@ -503,12 +523,12 @@
                         fetch(`${FIREBASE_BASE}/quiral_comandos/amarelo.json?nocache=` + Date.now())
                     ]);
                     comandosAtuais = {
-                        azul: (await resAzul.json()) || {},
-                        amarelo: (await resAmarelo.json()) || {}
+                        azul: fromFirebaseKeyed(await resAzul.json()),
+                        amarelo: fromFirebaseKeyed(await resAmarelo.json())
                     };
                 } else if (session.team) {
                     const res = await fetch(`${FIREBASE_BASE}/quiral_comandos/${session.team}.json?nocache=` + Date.now());
-                    comandosAtuais = { [session.team]: (await res.json()) || {} };
+                    comandosAtuais = { [session.team]: fromFirebaseKeyed(await res.json()) };
                 } else {
                     comandosAtuais = {};
                 }
@@ -521,9 +541,10 @@
             Object.keys(comandosAtuais).forEach(team => {
                 const ordens = comandosAtuais[team] || {};
                 Object.keys(ordens).forEach(id => {
+                    const o = ordens[id];
+                    if (!o || !o.ordem) return; // ignora entradas inválidas/vazias sem travar o restante
                     const badge = document.getElementById(`ordem-badge-${team}-${id}`);
                     if (!badge) return;
-                    const o = ordens[id];
                     badge.textContent = o.ordem === 'atacar' ? '⚔' : '🛡';
                     badge.classList.remove('hidden');
                     badge.classList.add(o.ordem === 'atacar' ? 'bg-red-600' : 'bg-blue-600');
@@ -932,7 +953,7 @@
                 const data = await res.json();
                 if (!data) return;
                 if (data.positions && !layoutPendente) {
-                    nodePositions = data.positions;
+                    nodePositions = fromFirebaseKeyed(data.positions);
                     // Se os nós do mapa já tiverem sido criados antes desta resposta chegar
                     // (corrida entre fetchConfig e fetchUplinkData), reposiciona os que já existem.
                     Object.keys(nodePositions).forEach(id => {
