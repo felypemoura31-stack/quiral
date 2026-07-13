@@ -1024,9 +1024,9 @@
                     }
                 }
 
-                const mapNode = document.getElementById(`map-node-${id}`);
+               const mapNode = document.getElementById(`map-node-${id}`);
                 if (mapNode) {
-                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
+                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto ${cssClass}` + (isAdmin ? ' admin-mode' : '');
                 }
 
                 miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
