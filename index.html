@@ -1151,7 +1151,6 @@
 
         async function startNewMatchLogs() {
             renderedLogKeys.clear();
-            ultimaCapturaLogada = {};
             document.getElementById('log-box').innerHTML = '';
             document.getElementById('log-box').dataset.empty = '1';
             try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
@@ -1197,8 +1196,6 @@
         // =====================================
         // ANÁLISE DE MUDANÇAS DE ESTADO -> LOGS
         // =====================================
-        let ultimaCapturaLogada = {}; // nodeId -> timestamp do último "capturado" registado, pra filtrar oscilação/ruído
-
         function analisarLogs(newData) {
             if (!lastNodesData) {
                 lastScoreAzul = parseInt(newData.az || 0);
@@ -1209,25 +1206,8 @@
             const isQuiral = newData.md === "QUIRAL";
             const currentAzul = parseInt(newData.az || 0);
             const currentAmarelo = parseInt(newData.am || 0);
-            const scoredBlue = currentAzul > lastScoreAzul;
-            const scoredYellow = currentAmarelo > lastScoreAmarelo;
             const tp = (newData.tp || '00:00').replace(':', '');
             const placar = ` <span class="text-gray-500">[${currentAzul}x${currentAmarelo}]</span>`;
-
-            // Primeiro conferimos quantas capturas aconteceram NESTE ciclo. Só arriscamos
-            // adivinhar o time por correlação de placar quando é inequívoco: exatamente 1
-            // nó capturado E só 1 dos dois times pontuou neste ciclo. Se dois nós forem
-            // capturados ao mesmo tempo (comum com vários nós em jogo), não dá pra saber
-            // com certeza qual placar pertence a qual nó — melhor reportar genérico do
-            // que arriscar atribuir ao time errado.
-            let capturasEsteCiclo = 0;
-            if (isQuiral) {
-                newData.nos.forEach((node, i) => {
-                    const prev = lastNodesData[i];
-                    if (prev && node.online && prev.ativo === true && node.ativo === false) capturasEsteCiclo++;
-                });
-            }
-            const atribuicaoSegura = capturasEsteCiclo === 1 && (scoredBlue !== scoredYellow);
 
             newData.nos.forEach((node, i) => {
                 const prev = lastNodesData[i];
@@ -1246,22 +1226,14 @@
                     else if (node.owner === 0 && prev.owner !== 0) saveLogToCloud(`n${id}_neutro_${tp}`, `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.${placar}`);
                 }
 
-                if (isQuiral && node.ativo !== prev.ativo && node.online) {
-                    if (node.ativo) {
-                        saveLogToCloud(`n${id}_reativado_${tp}`, `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
-                    } else {
-                        // Filtro anti-oscilação: se este mesmo nó já registou uma captura há
-                        // poucos segundos, é muito mais provável ser ruído (LoRa, flicker no
-                        // Firebase) do que uma recaptura de verdade — o cooldown do jogo já
-                        // impede recaptura tão rápida por design.
-                        const agora = Date.now();
-                        if (ultimaCapturaLogada[id] && (agora - ultimaCapturaLogada[id]) < 15000) return;
-                        ultimaCapturaLogada[id] = agora;
-
-                        if (atribuicaoSegura && scoredBlue) saveLogToCloud(`n${id}_capaz_${tp}`, `Nó ${id} capturado pelo <span class="text-blue-400 font-bold">AZUL</span>.${placar}`);
-                        else if (atribuicaoSegura && scoredYellow) saveLogToCloud(`n${id}_capam_${tp}`, `Nó ${id} capturado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.${placar}`);
-                        else saveLogToCloud(`n${id}_cap_${tp}`, `Nó ${id} <span class="text-red-400 font-bold">CAPTURADO</span>.${placar}`);
-                    }
+                // As capturas do modo Quiral (nó ativo -> inativo) NÃO são mais logadas
+                // por aqui. A própria central agora escreve isso direto no Firebase
+                // (/quiral_logs) assim que recebe o evento por LoRa — ela sabe com
+                // certeza qual time capturou, sem precisar adivinhar pelo placar.
+                // Continuamos avisando quando o nó REATIVA, porque isso a central
+                // ainda não envia pro Firebase.
+                if (isQuiral && node.ativo !== prev.ativo && node.online && node.ativo) {
+                    saveLogToCloud(`n${id}_reativado_${tp}`, `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
                 }
             });
 
