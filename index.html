@@ -138,14 +138,13 @@
                     </div>
                 </div>
 
-                <!-- CAMADA DO MAPA LIMPA (SEM POINTER-EVENTS-NONE, TOUCH-NONE GERENCIA ARRASTO) -->
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
                     <img id="map-bg" class="absolute inset-0 w-full h-full object-contain hidden pointer-events-none" alt="Mapa do Campo">
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none text-center px-6">
                         Aguardando sincronização de mapa da nuvem...
                     </div>
-                    <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
-                    <div id="map-marcadores-layer" class="absolute inset-0 z-10"></div>
+                    <div id="map-nodes-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
+                    <div id="map-marcadores-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
                 </div>
                 
                 <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós para reposicionar e depois toque em "SALVAR LAYOUT" para publicar as novas posições para todos.</p>
@@ -350,7 +349,7 @@
         }
 
         // =====================================
-        // MAPA: LÓGICA DE CLIQUE E ARRASTO (BLINDADA)
+        // MAPA: LÓGICA DE CLIQUE E ARRASTO (NOVA VERSÃO TOUCH-FRIENDLY)
         // =====================================
         function defaultPosition(id, total) {
             const cols = Math.ceil(Math.sqrt(total)); const rows = Math.ceil(total / cols); const idx = id - 1;
@@ -360,11 +359,18 @@
         function ensureNodeElements(n) {
             if (n === currentNodeCount) return; currentNodeCount = n;
             const layer = document.getElementById('map-nodes-layer'); layer.innerHTML = '';
+            
+            // Garantir que as camadas não bloqueiam toques e que os nós recebem os eventos
+            layer.style.pointerEvents = 'none';
+            document.getElementById('map-marcadores-layer').style.pointerEvents = 'none';
+
             for (let i = 1; i <= n; i++) {
                 const el = document.createElement('div'); el.id = `map-node-${i}`; el.textContent = i;
                 const pos = nodePositions[i] || defaultPosition(i, n);
                 el.style.left = pos.x + '%'; el.style.top = pos.y + '%';
-                el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline touch-none' + (isAdmin ? ' admin-mode' : '');
+                
+                // CLASSES FUNDAMENTAIS PARA PERMITIR INTERAÇÃO: pointer-events-auto E touch-none
+                el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline pointer-events-auto touch-none select-none' + (isAdmin ? ' admin-mode' : '');
                 
                 const badgeAzul = document.createElement('span'); badgeAzul.id = `ordem-badge-azul-${i}`;
                 badgeAzul.className = 'ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300';
@@ -379,47 +385,99 @@
         }
 
         let layoutPendente = false;
-        function marcarLayoutPendente() { layoutPendente = true; const btn = document.getElementById('btn-salvar-layout'); btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse'); }
+
+        function marcarLayoutPendente() {
+            layoutPendente = true;
+            const btn = document.getElementById('btn-salvar-layout');
+            btn.textContent = 'SALVAR LAYOUT ●';
+            btn.classList.add('animate-pulse');
+        }
 
         async function salvarLayout() {
             if (!isAdmin) return;
-            const btn = document.getElementById('btn-salvar-layout'); btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
-            const ok = await escreverComRetry(`${FIREBASE_BASE}/quiral_config/positions.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) }, 'Salvar layout');
-            layoutPendente = false; btn.textContent = ok ? 'SALVO ✔' : 'SEM SINAL — na fila'; setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 1800);
+            const btn = document.getElementById('btn-salvar-layout');
+            btn.disabled = true;
+            btn.classList.remove('animate-pulse');
+            btn.textContent = 'SALVANDO...';
+            const ok = await escreverComRetry(
+                `${FIREBASE_BASE}/quiral_config/positions.json`,
+                { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) },
+                'Salvar layout do mapa'
+            );
+            layoutPendente = false;
+            btn.textContent = ok ? 'SALVO ✔' : 'SEM SINAL — na fila';
+            setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 1800);
         }
 
         function attachNodeInteraction(el, id) {
-            let dragging = false, startX = 0, startY = 0;
+            let dragging = false, moved = false;
+            let startX = 0, startY = 0;
             
-            // Lógica Pura de Clique (Comandantes e Admin)
-            el.addEventListener('click', (e) => {
-                if (el.dataset.dragged === 'true') { el.dataset.dragged = 'false'; return; }
-                onNodeTap(id);
-            });
+            // FUNÇÕES PARA TRATAR COORDENADAS SEJA TOUCH OU MOUSE
+            const getX = (e) => e.touches ? e.touches[0].clientX : e.clientX;
+            const getY = (e) => e.touches ? e.touches[0].clientY : e.clientY;
 
-            // Lógica Exclusiva de Arrasto (Apenas Admin)
-            el.addEventListener('pointerdown', (e) => {
-                if (!isAdmin) return;
-                dragging = true; startX = e.clientX; startY = e.clientY;
-                el.dataset.dragged = 'false'; el.setPointerCapture(e.pointerId);
-            });
-            el.addEventListener('pointermove', (e) => {
-                if (!dragging) return;
-                if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) el.dataset.dragged = 'true';
-                if (el.dataset.dragged === 'true') {
-                    const rect = document.getElementById('map-container').getBoundingClientRect();
-                    let x = Math.max(1, Math.min(99, ((e.clientX - rect.left) / rect.width) * 100));
-                    let y = Math.max(1, Math.min(99, ((e.clientY - rect.top) / rect.height) * 100));
-                    el.style.left = x + '%'; el.style.top = y + '%';
+            const handleStart = (e) => {
+                if (!isAdmin) return; // Apenas admin pode arrastar
+                startX = getX(e);
+                startY = getY(e);
+                moved = false;
+                dragging = true;
+            };
+
+            const handleMove = (e) => {
+                if (!dragging || !isAdmin) return;
+                
+                const currentX = getX(e);
+                const currentY = getY(e);
+                
+                // Se moveu mais de 5 pixels, considera como um "arrasto" e não "clique"
+                if (Math.abs(currentX - startX) > 5 || Math.abs(currentY - startY) > 5) {
+                    moved = true;
                 }
-            });
-            el.addEventListener('pointerup', (e) => {
-                if (!dragging) return;
-                dragging = false; el.releasePointerCapture(e.pointerId);
-                if (el.dataset.dragged === 'true') {
-                    nodePositions[id] = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+
+                if (moved) {
+                    e.preventDefault(); // Impede o scroll da página durante o arrasto no mobile
+                    const rect = document.getElementById('map-container').getBoundingClientRect();
+                    let x = ((currentX - rect.left) / rect.width) * 100;
+                    let y = ((currentY - rect.top) / rect.height) * 100;
+                    
+                    x = Math.max(1, Math.min(99, x));
+                    y = Math.max(1, Math.min(99, y));
+                    
+                    el.style.left = x + '%';
+                    el.style.top = y + '%';
+                }
+            };
+
+            const handleEnd = (e) => {
+                if (!isAdmin) return;
+                dragging = false;
+                if (moved) {
+                    const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
+                    nodePositions[id] = { x, y };
                     marcarLayoutPendente();
                 }
+                // Importante: Não disparamos o click aqui, deixamos o evento nativo (abaixo) tratar disso se for um toque simples
+            };
+
+            // Eventos Mouse (PC)
+            el.addEventListener('mousedown', handleStart);
+            document.addEventListener('mousemove', handleMove); // Ouve no document para não "perder" a bolinha se o rato for rápido
+            document.addEventListener('mouseup', handleEnd);
+
+            // Eventos Touch (Telemóvel)
+            el.addEventListener('touchstart', handleStart, { passive: false });
+            el.addEventListener('touchmove', handleMove, { passive: false });
+            el.addEventListener('touchend', handleEnd);
+
+            // Clique puro (Para abrir as ordens - funciona bem no mobile porque não cancelámos o e.preventDefault se não houve "moved")
+            el.addEventListener('click', (e) => {
+                if (moved && isAdmin) {
+                    moved = false; // Foi um arrasto, ignora o menu
+                    return; 
+                }
+                onNodeTap(id);
             });
         }
 
@@ -446,7 +504,8 @@
                 });
                 if (linhas.length) ordemInfo = '<br><br><span class="text-[10px] text-gray-500">Ordens:</span><br>' + linhas.join('<br>');
             }
-            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra + ordemInfo);
+            const hint = isAdmin ? '<br><br><span class="text-[10px] text-gray-500">Arraste o nó no mapa para reposicionar.</span>' : '';
+            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra + ordemInfo + hint);
         }
 
         // =====================================
@@ -463,47 +522,92 @@
             const id = ordemNodeAlvo; const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
             if (tipo) {
                 await escreverComRetry(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) }, `Ordem nó ${id}`);
-                escreverComRetry(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}/o_${Date.now()}_n${id}.json`, { method: 'PUT', body: JSON.stringify({ node: id, ordem: tipo, autor: session.label, ts: Date.now() }) });
-            } else { await escreverComRetry(path, { method: 'DELETE' }); }
+                registrarHistoricoOrdem(id, tipo);
+            } else {
+                await escreverComRetry(path, { method: 'DELETE' }, `Cancelar ordem nó ${id}`);
+            }
             await fetchComandos(); closeOrdemModal();
         }
 
+        function registrarHistoricoOrdem(id, tipo) {
+            const chave = `o_${Date.now()}_n${id}`;
+            const entrada = { node: id, ordem: tipo, autor: session.label, ts: Date.now() };
+            escreverComRetry(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(entrada) }, 'Histórico de ordem');
+        }
+
         function removerExpiradas(ordens) {
-            const lim = Date.now() - ORDEM_EXPIRA_MIN * 60 * 1000; const out = {};
-            Object.keys(ordens).forEach(id => { if (ordens[id] && ordens[id].ts > lim) out[id] = ordens[id]; }); return out;
+            const limite = Date.now() - ORDEM_EXPIRA_MIN * 60 * 1000;
+            const out = {};
+            Object.keys(ordens).forEach(id => {
+                if (ordens[id] && ordens[id].ts && ordens[id].ts > limite) out[id] = ordens[id];
+            });
+            return out;
+        }
+
+        function detectarOrdensNovasENotificar(anterior, atual) {
+            if (!anterior) return; 
+            if (session && session.role === 'comandante') return; 
+            let novas = 0;
+            ['azul', 'amarelo'].forEach(team => {
+                const antes = anterior[team] || {};
+                const depois = atual[team] || {};
+                Object.keys(depois).forEach(id => { if (!antes[id]) novas++; });
+            });
+            if (novas > 0) notificarNovaOrdem(novas);
+        }
+
+        function notificarNovaOrdem(qtd) {
+            mostrarToast(qtd === 1 ? '⚔ Nova ordem recebida!' : `⚔ ${qtd} novas ordens recebidas!`);
+            if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'square'; osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.08, ctx.currentTime);
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.start(); osc.stop(ctx.currentTime + 0.15);
+            } catch (err) { }
         }
 
         async function fetchComandos() {
             if (!session) { comandosAtuais = {}; renderComandosOverlay(); return; }
             try {
-                let novo;
+                let novoEstado;
                 if (isAdmin) {
-                    const [ra, ry] = await Promise.all([fetch(`${FIREBASE_BASE}/quiral_comandos/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_comandos/amarelo.json?nocache=` + Date.now())]);
-                    novo = { azul: removerExpiradas(fromFirebaseKeyed(await ra.json())), amarelo: removerExpiradas(fromFirebaseKeyed(await ry.json())) };
+                    const [resAzul, resAmarelo] = await Promise.all([
+                        fetch(`${FIREBASE_BASE}/quiral_comandos/azul.json?nocache=` + Date.now()),
+                        fetch(`${FIREBASE_BASE}/quiral_comandos/amarelo.json?nocache=` + Date.now())
+                    ]);
+                    novoEstado = {
+                        azul: removerExpiradas(fromFirebaseKeyed(await resAzul.json())),
+                        amarelo: removerExpiradas(fromFirebaseKeyed(await resAmarelo.json()))
+                    };
                 } else if (session.team) {
                     const res = await fetch(`${FIREBASE_BASE}/quiral_comandos/${session.team}.json?nocache=` + Date.now());
-                    novo = { [session.team]: removerExpiradas(fromFirebaseKeyed(await res.json())) };
-                } else { novo = {}; }
-                
-                if (comandosAnteriores && session.role !== 'comandante') {
-                    let novas = 0;
-                    ['azul', 'amarelo'].forEach(t => { Object.keys(novo[t] || {}).forEach(id => { if (!(comandosAnteriores[t] || {})[id]) novas++; }); });
-                    if (novas > 0) { mostrarToast(novas === 1 ? '⚔ Nova ordem recebida!' : `⚔ ${novas} novas ordens!`); if (navigator.vibrate) navigator.vibrate([120, 60, 120]); }
+                    novoEstado = { [session.team]: removerExpiradas(fromFirebaseKeyed(await res.json())) };
+                } else {
+                    novoEstado = {};
                 }
-                comandosAnteriores = novo; comandosAtuais = novo;
-            } catch (err) {}
+                detectarOrdensNovasENotificar(comandosAnteriores, novoEstado);
+                comandosAnteriores = novoEstado;
+                comandosAtuais = novoEstado;
+            } catch (err) { console.error('Falha ao buscar ordens', err); }
             renderComandosOverlay();
         }
 
         function renderComandosOverlay() {
-            document.querySelectorAll('.ordem-badge').forEach(b => { b.classList.add('hidden'); b.classList.remove('bg-red-600', 'bg-blue-600'); });
+            document.querySelectorAll('.ordem-badge').forEach(b => { b.textContent = ''; b.classList.add('hidden'); b.classList.remove('bg-red-600', 'bg-blue-600'); });
             Object.keys(comandosAtuais).forEach(team => {
-                Object.keys(comandosAtuais[team] || {}).forEach(id => {
-                    const o = comandosAtuais[team][id];
+                const ordens = comandosAtuais[team] || {};
+                Object.keys(ordens).forEach(id => {
+                    const o = ordens[id];
+                    if (!o || !o.ordem) return; 
                     const badge = document.getElementById(`ordem-badge-${team}-${id}`);
-                    if (!o || !o.ordem || !badge) return;
+                    if (!badge) return;
                     badge.textContent = o.ordem === 'atacar' ? '⚔' : '🛡';
-                    badge.classList.remove('hidden'); badge.classList.add(o.ordem === 'atacar' ? 'bg-red-600' : 'bg-blue-600');
+                    badge.classList.remove('hidden');
+                    badge.classList.add(o.ordem === 'atacar' ? 'bg-red-600' : 'bg-blue-600');
                 });
             });
         }
@@ -527,40 +631,60 @@
                 let x = Math.max(1, Math.min(99, ((e.clientX - rect.left) / rect.width) * 100));
                 let y = Math.max(1, Math.min(99, ((e.clientY - rect.top) / rect.height) * 100));
                 ativarModoMarcador(); 
-                const label = prompt('Nome do marcador:'); if (label === null) return;
-                escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/m_${Date.now()}.json`, { method: 'PUT', body: JSON.stringify({ x, y, label: label.trim() || 'Marcador', ts: Date.now(), autor: session.label }) }).then(fetchMarcadores);
+                const label = prompt('Nome do marcador (ex: "Reagrupar aqui"):'); if (label === null) return;
+                criarMarcador(x, y, label.trim() || 'Marcador');
             });
+        }
+
+        async function criarMarcador(x, y, label) {
+            const chave = 'm_' + Date.now();
+            const dado = { x, y, label, ts: Date.now(), autor: session.label };
+            await escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }, 'Marcador tático');
+            await fetchMarcadores();
         }
 
         async function removerMarcador(team, chave) {
             if (!session || session.role !== 'comandante' || session.team !== team) return;
             if (!confirm('Remover este marcador?')) return;
-            await escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }); await fetchMarcadores();
+            await escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }, 'Remover marcador');
+            await fetchMarcadores();
         }
 
         async function fetchMarcadores() {
             if (!session) { marcadoresAtuais = {}; renderMarcadores(); return; }
             try {
                 if (isAdmin) {
-                    const [ra, ry] = await Promise.all([fetch(`${FIREBASE_BASE}/quiral_config/marcadores/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_config/marcadores/amarelo.json?nocache=` + Date.now())]);
+                    const [ra, ry] = await Promise.all([
+                        fetch(`${FIREBASE_BASE}/quiral_config/marcadores/azul.json?nocache=` + Date.now()),
+                        fetch(`${FIREBASE_BASE}/quiral_config/marcadores/amarelo.json?nocache=` + Date.now())
+                    ]);
                     marcadoresAtuais = { azul: (await ra.json()) || {}, amarelo: (await ry.json()) || {} };
                 } else if (session.team) {
                     const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}.json?nocache=` + Date.now());
                     marcadoresAtuais = { [session.team]: (await res.json()) || {} };
-                } else { marcadoresAtuais = {}; }
-            } catch (err) {}
+                } else {
+                    marcadoresAtuais = {};
+                }
+            } catch (err) { console.error('Falha ao buscar marcadores', err); }
             renderMarcadores();
         }
 
         function renderMarcadores() {
-            const layer = document.getElementById('map-marcadores-layer'); if (!layer) return; layer.innerHTML = '';
+            const layer = document.getElementById('map-marcadores-layer');
+            if (!layer) return;
+            layer.innerHTML = '';
             Object.keys(marcadoresAtuais).forEach(team => {
-                Object.keys(marcadoresAtuais[team] || {}).forEach(chave => {
-                    const m = marcadoresAtuais[team][chave]; if (!m) return;
+                const marcadores = marcadoresAtuais[team] || {};
+                Object.keys(marcadores).forEach(chave => {
+                    const m = marcadores[chave];
+                    if (!m) return;
                     const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
                     const pin = document.createElement('div');
-                    pin.className = 'marcador-pin absolute -ml-3 -mt-6 flex flex-col items-center cursor-pointer select-none touch-none';
-                    pin.style.left = m.x + '%'; pin.style.top = m.y + '%';
+                    
+                    // CLASSES CRÍTICAS PARA PERMITIR CLIQUES E EVITAR ARRASTOS NO FUNDO DO MAPA
+                    pin.className = 'marcador-pin absolute -ml-3 -mt-6 flex flex-col items-center cursor-pointer select-none pointer-events-auto touch-none';
+                    pin.style.left = m.x + '%';
+                    pin.style.top = m.y + '%';
                     pin.innerHTML = `<span class="text-lg ${cor}">📍</span><span class="text-[9px] bg-black/70 ${cor} px-1 rounded whitespace-nowrap">${(m.label || '').slice(0, 20)}</span>`;
                     pin.onclick = () => removerMarcador(team, chave);
                     layer.appendChild(pin);
@@ -569,218 +693,482 @@
         }
 
         // =====================================
-        // HISTÓRICO DE ORDENS E EXPORTAÇÃO
+        // GESTÃO DE CONTAS (admin)
         // =====================================
-        async function openHistoricoModal() {
-            if (!session) return;
-            document.getElementById('historico-modal').classList.remove('hidden'); requestAnimationFrame(() => document.getElementById('historico-modal').classList.remove('opacity-0'));
-            const lista = document.getElementById('historico-lista'); lista.innerHTML = '<p class="text-gray-500 text-center">Carregando...</p>';
-            try {
-                let entradas = [];
-                if (isAdmin) {
-                    const [ra, ry] = await Promise.all([fetch(`${FIREBASE_BASE}/quiral_ordens_log/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_ordens_log/amarelo.json?nocache=` + Date.now())]);
-                    entradas = [...Object.values((await ra.json()) || {}).map(e => ({ ...e, team: 'azul' })), ...Object.values((await ry.json()) || {}).map(e => ({ ...e, team: 'amarelo' }))];
-                } else if (session.team) {
-                    entradas = Object.values((await (await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}.json?nocache=` + Date.now())).json()) || {}).map(e => ({ ...e, team: session.team }));
-                }
-                entradas = entradas.filter(Boolean).sort((a, b) => (b.ts || 0) - (a.ts || 0));
-                if (!entradas.length) { lista.innerHTML = '<p class="text-gray-500 text-center">Nenhuma ordem registada.</p>'; return; }
-                lista.innerHTML = entradas.map(e => `<div class="border-b border-gray-800 pb-1"><span class="text-gray-600">[${new Date(e.ts).toLocaleTimeString('pt-PT', {hour12:false})}]</span> <span class="${e.team === 'azul' ? 'text-blue-400' : 'text-yellow-400'} font-bold">${e.team.toUpperCase()}</span> ${e.ordem === 'atacar' ? '⚔' : '🛡'} Nó ${e.node}</div>`).join('');
-            } catch (err) { lista.innerHTML = '<p class="text-red-400 text-center">Erro ao carregar histórico.</p>'; }
+        async function openContasModal() {
+            if (!isAdmin) return;
+            const box = document.getElementById('contas-modal');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            await renderContasList();
         }
-        function closeHistoricoModal() { const box = document.getElementById('historico-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
-
-        async function exportarLog() {
-            try {
-                const data = (await (await fetch(LOGS_URL + '?nocache=' + Date.now())).json()) || {};
-                const texto = Object.values(data).sort((a, b) => (a.ts || 0) - (b.ts || 0)).map(e => `[${e.t}] ${(e.m || '').replace(/<[^>]+>/g, '')}`).join('\n') || 'Sem registos.';
-                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' })); a.download = `registo-${Date.now()}.txt`;
-                document.body.appendChild(a); a.click(); a.remove();
-            } catch (err) { mostrarToast('Falha ao exportar.'); }
+        function closeContasModal() {
+            const box = document.getElementById('contas-modal');
+            box.classList.add('opacity-0');
+            setTimeout(() => box.classList.add('hidden'), 200);
         }
 
-        // =====================================
-        // MODO NOTURNO / WAKE LOCK
-        // =====================================
-        function toggleModoNoturno(forcar) {
-            const n = typeof forcar === 'boolean' ? forcar : !document.body.classList.contains('modo-noturno');
-            document.body.classList.toggle('modo-noturno', n); localStorage.setItem('quiral_modo_noturno', n ? '1' : '0'); document.getElementById('btn-noturno').classList.toggle('text-red-500', n);
-        }
-
-        async function toggleWakeLock() {
-            const btn = document.getElementById('btn-wakelock');
-            if (wakeLock) { try { await wakeLock.release(); } catch (err) {} wakeLock = null; btn.classList.remove('text-yellow-400'); mostrarToast('Tela normal.'); return; }
-            if (!('wakeLock' in navigator)) { mostrarToast('Não suportado pelo navegador.'); return; }
-            try { wakeLock = await navigator.wakeLock.request('screen'); btn.classList.add('text-yellow-400'); mostrarToast('Tela sempre ligada.'); wakeLock.addEventListener('release', () => { wakeLock = null; btn.classList.remove('text-yellow-400'); }); } catch (err) { mostrarToast('Erro ao manter tela ligada.'); }
-        }
-        document.addEventListener('visibilitychange', async () => { if (wakeLock !== null && document.visibilityState === 'visible') { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {} } });
-
-        // =====================================
-        // CONTAS
-        // =====================================
-        async function openContasModal() { if (!isAdmin) return; document.getElementById('contas-modal').classList.remove('hidden'); requestAnimationFrame(() => document.getElementById('contas-modal').classList.remove('opacity-0')); await renderContasList(); }
-        function closeContasModal() { document.getElementById('contas-modal').classList.add('opacity-0'); setTimeout(() => document.getElementById('contas-modal').classList.add('hidden'), 200); }
         async function renderContasList() {
-            const c = document.getElementById('contas-lista'); c.innerHTML = '<p class="text-center">Carregando...</p>';
-            const contas = (await (await fetch(AUTH_URL + '?nocache=' + Date.now())).json()) || {}; c.innerHTML = '';
-            ROLE_KEYS.forEach(k => {
-                c.innerHTML += `<div class="border border-gray-700 rounded p-3"><p class="text-xs text-gray-400 font-bold mb-2">${ROLE_LABELS[k]}</p><input type="text" id="conta-user-${k}" value="${contas[k]?.user || ''}" placeholder="usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">${k === 'admin' ? `<input type="password" id="conta-senha-atual-${k}" placeholder="senha atual" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">` : ''}<input type="password" id="conta-pass-${k}" placeholder="nova senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white"><button onclick="salvarConta('${k}')" class="w-full bg-green-800 py-2 rounded text-xs text-white">SALVAR</button><p id="conta-msg-${k}" class="text-[10px] mt-1 hidden"></p></div>`;
+            const container = document.getElementById('contas-lista');
+            container.innerHTML = '<p class="text-gray-500 text-xs text-center">Carregando...</p>';
+            let contas = {};
+            try {
+                const res = await fetch(AUTH_URL + '?nocache=' + Date.now());
+                contas = (await res.json()) || {};
+            } catch (err) { console.error(err); }
+
+            container.innerHTML = '';
+            ROLE_KEYS.forEach(key => {
+                const conta = contas[key] || {};
+                const isAdminRow = key === 'admin';
+                const row = document.createElement('div');
+                row.className = 'border border-gray-700 rounded p-3';
+                row.innerHTML = `
+                    <p class="text-xs text-gray-400 font-bold mb-2">${ROLE_LABELS[key]}</p>
+                    <input type="text" id="conta-user-${key}" value="${conta.user || ''}" placeholder="usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">
+                    ${isAdminRow ? `<input type="password" id="conta-senha-atual-${key}" placeholder="senha atual" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">` : ''}
+                    <input type="password" id="conta-pass-${key}" placeholder="nova senha (em branco = manter)" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">
+                    <button onclick="salvarConta('${key}')" class="w-full bg-green-800 hover:bg-green-700 text-white text-xs py-2 rounded border border-green-600">SALVAR</button>
+                    <p id="conta-msg-${key}" class="text-[10px] mt-1 hidden"></p>
+                `;
+                container.appendChild(row);
             });
         }
+
         async function salvarConta(key) {
-            const u = document.getElementById(`conta-user-${key}`).value.trim(), p = document.getElementById(`conta-pass-${key}`).value, m = document.getElementById(`conta-msg-${key}`);
-            if (!u) { m.textContent = 'Informe usuário.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); return; }
+            const userInput = document.getElementById(`conta-user-${key}`);
+            const passInput = document.getElementById(`conta-pass-${key}`);
+            const msg = document.getElementById(`conta-msg-${key}`);
+            const novoUser = userInput.value.trim();
+            const novaSenha = passInput.value;
+
+            function falhar(texto) {
+                msg.textContent = texto;
+                msg.className = 'text-[10px] mt-1 text-red-400';
+                msg.classList.remove('hidden');
+            }
+
+            if (!novoUser) { falhar('Informe um usuário.'); return; }
+
             try {
-                const cur = (await (await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json?nocache=` + Date.now())).json()) || {};
-                if (key === 'admin' && cur.passHash) {
-                    const s = document.getElementById('conta-senha-atual-admin').value; if (!s || await sha256(s) !== cur.passHash) { m.textContent = 'Senha atual incorreta.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); return; }
+                const res = await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json?nocache=` + Date.now());
+                const contaAtual = (await res.json()) || {};
+
+                if (key === 'admin' && contaAtual.passHash) {
+                    const senhaAtualInput = document.getElementById('conta-senha-atual-admin');
+                    const senhaAtual = senhaAtualInput.value;
+                    if (!senhaAtual) { falhar('Informe a senha atual para confirmar.'); return; }
+                    const hashDigitado = await sha256(senhaAtual);
+                    if (hashDigitado !== contaAtual.passHash) { falhar('Senha atual incorreta.'); return; }
                 }
-                const passHash = p ? await sha256(p) : cur.passHash; if (!passHash) { m.textContent = 'Defina senha.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); return; }
-                await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json`, { method: 'PUT', body: JSON.stringify({ user: u, passHash, role: roleTypeOf(key), team: roleTeamOf(key), label: ROLE_LABELS[key] }) });
-                m.textContent = 'Salvo!'; m.className = 'text-[10px] mt-1 text-green-400'; m.classList.remove('hidden'); document.getElementById(`conta-pass-${key}`).value = '';
-                if (session && cur.user && session.user.toLowerCase() === cur.user.toLowerCase()) { session.user = u; sessionStorage.setItem('quiral_session', JSON.stringify(session)); applySessionUI(); }
-            } catch (err) { m.textContent = 'Erro.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); }
+
+                const passHash = novaSenha ? await sha256(novaSenha) : contaAtual.passHash;
+                if (!passHash) { falhar('Defina uma senha (esta conta ainda não tem nenhuma).'); return; }
+
+                const usuarioAntigo = contaAtual.user;
+                const novaConta = { user: novoUser, passHash, role: roleTypeOf(key), team: roleTeamOf(key), label: ROLE_LABELS[key] };
+                await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json`, { method: 'PUT', body: JSON.stringify(novaConta) });
+
+                msg.textContent = 'Salvo!';
+                msg.className = 'text-[10px] mt-1 text-green-400';
+                msg.classList.remove('hidden');
+                passInput.value = '';
+                if (key === 'admin') { const s = document.getElementById('conta-senha-atual-admin'); if (s) s.value = ''; }
+
+                // Se essa era a própria conta logada, atualiza a sessão local para não deslogar
+                if (session && usuarioAntigo && session.user && session.user.toLowerCase() === usuarioAntigo.toLowerCase()) {
+                    session.user = novoUser;
+                    sessionStorage.setItem('quiral_session', JSON.stringify(session));
+                    applySessionUI();
+                }
+            } catch (err) {
+                console.error('Falha ao salvar conta', err);
+                falhar('Erro ao salvar.');
+            }
         }
 
         // =====================================
         // ATUALIZAÇÃO VISUAL: NODES NA TELA
         // =====================================
         function renderVisuals(data) {
-            const isQuiral = data.md === "QUIRAL"; const miniGrid = document.getElementById('nodes-grid'); miniGrid.innerHTML = '';
-            data.nos.forEach((node, i) => {
-                const id = i + 1; let cssClass = "offline"; let badgeColor = "bg-gray-800 border-gray-700";
+            const isQuiral = data.md === "QUIRAL";
+            const miniGrid = document.getElementById('nodes-grid');
+            miniGrid.innerHTML = '';
+
+            data.nos.forEach((node, index) => {
+                const id = index + 1;
+                let cssClass = "offline";
+                let badgeColor = "bg-gray-800 border-gray-700";
+
                 if (node.online) {
-                    if (isQuiral) { cssClass = node.ativo ? "active-green" : "inactive-red"; badgeColor = node.ativo ? "bg-green-900 border-green-600" : "bg-red-900 border-red-600"; } 
-                    else { if (node.owner === 1) { cssClass = "active-blue"; badgeColor = "bg-blue-900 border-blue-600"; } else if (node.owner === 2) { cssClass = "active-yellow"; badgeColor = "bg-yellow-900 border-yellow-600"; } else { cssClass = "offline"; badgeColor = "bg-gray-700 border-gray-500"; } }
+                    if (isQuiral) {
+                        cssClass = node.ativo ? "active-green" : "inactive-red";
+                        badgeColor = node.ativo ? "bg-green-900 border-green-600" : "bg-red-900 border-red-600";
+                    } else {
+                        if (node.owner === 1) { cssClass = "active-blue"; badgeColor = "bg-blue-900 border-blue-600"; }
+                        else if (node.owner === 2) { cssClass = "active-yellow"; badgeColor = "bg-yellow-900 border-yellow-600"; }
+                        else { cssClass = "offline"; badgeColor = "bg-gray-700 border-gray-500"; }
+                    }
                 }
+
                 const mapNode = document.getElementById(`map-node-${id}`);
-                if (mapNode) mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none touch-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
+                if (mapNode) {
+                    // MANTEMOS A CLASSE POINTER-EVENTS-AUTO AQUI PARA GARANTIR QUE ELE É CLICÁVEL!
+                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto touch-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
+                }
+
                 miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
             });
         }
-        function updateNodeCount(nos) { document.getElementById('node-count').textContent = `(${nos.filter(n => n.online).length}/${nos.length} em linha)`; }
+
+        function updateNodeCount(nos) {
+            const online = nos.filter(n => n.online).length;
+            document.getElementById('node-count').textContent = `(${online}/${nos.length} em linha)`;
+        }
 
         // =====================================
-        // MAPA UPLOAD
+        // MAPA: UPLOAD DE IMAGEM
         // =====================================
+        function resizeImage(file, maxW = 1280, quality = 0.72) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                    const scale = Math.min(1, maxW / img.width);
+                    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    URL.revokeObjectURL(url);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.onerror = reject;
+                img.src = url;
+            });
+        }
+
+        function applyContainerAspect(w, h) {
+            if (!w || !h) return;
+            document.getElementById('map-container').style.aspectRatio = w + ' / ' + h;
+        }
+
+        function setMapImage(dataUrl) {
+            const img = document.getElementById('map-bg');
+            img.onload = () => applyContainerAspect(img.naturalWidth, img.naturalHeight);
+            img.src = dataUrl;
+            img.classList.remove('hidden');
+            document.getElementById('map-placeholder').classList.add('hidden');
+        }
+
         function wireMapUpload() {
             document.getElementById('map-upload').addEventListener('change', async (e) => {
-                const file = e.target.files[0]; if (!file) return; const label = document.getElementById('btn-upload'); label.style.opacity = 0.6;
+                const file = e.target.files[0];
+                if (!file) return;
+                const label = document.getElementById('btn-upload');
+                label.style.opacity = 0.6;
                 try {
-                    const dataUrl = await new Promise((resolve, reject) => { const img = new Image(); const url = URL.createObjectURL(file); img.onload = () => { const s = Math.min(1, 1280 / img.width); const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.72)); }; img.onerror = reject; img.src = url; });
+                    const dataUrl = await resizeImage(file);
                     await fetch(`${FIREBASE_BASE}/quiral_config/mapImage.json`, { method: 'PUT', body: JSON.stringify(dataUrl) });
-                    const img = document.getElementById('map-bg'); img.onload = () => document.getElementById('map-container').style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight; img.src = dataUrl; img.classList.remove('hidden'); document.getElementById('map-placeholder').classList.add('hidden');
-                } catch (err) { showModal('ERRO', 'Não foi possível processar a imagem do mapa.'); } finally { label.style.opacity = 1; e.target.value = ''; }
+                    setMapImage(dataUrl);
+                } catch (err) {
+                    showModal('ERRO', 'Não foi possível processar a imagem do mapa.');
+                } finally {
+                    label.style.opacity = 1;
+                    e.target.value = '';
+                }
             });
         }
 
         // =====================================
-        // LOGS DEDUPLICAÇÃO
+        // LOGS: LEITURA, ESCRITA E DEDUPLICAÇÃO
         // =====================================
+        // Múltiplos telemóveis assistem à mesma partida ao mesmo tempo. Para que
+        // vários espectadores detetando o MESMO evento não criem entradas duplicadas,
+        // a chave de cada registo é determinística (nó + tipo de evento + tempo de
+        // jogo transmitido pela central) — todos os clientes convergem na mesma chave.
         function addLog(key, html, timeStr) {
-            if (renderedLogKeys.has(key)) return; renderedLogKeys.add(key); const box = document.getElementById('log-box'); if (box.dataset.empty === '1') { box.innerHTML = ''; box.dataset.empty = '0'; }
+            if (renderedLogKeys.has(key)) return;
+            renderedLogKeys.add(key);
+            const box = document.getElementById('log-box');
+            if (box.dataset.empty === '1') { box.innerHTML = ''; box.dataset.empty = '0'; }
             const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 60;
-            const row = document.createElement('div'); row.className = 'log-entry border-b border-gray-800/60 pb-1'; row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> ${html}`; box.appendChild(row);
-            if (wasNearBottom) { box.scrollTop = box.scrollHeight; document.getElementById('jump-latest').classList.add('hidden'); } else { document.getElementById('jump-latest').classList.remove('hidden'); }
+            const row = document.createElement('div');
+            row.className = 'log-entry border-b border-gray-800/60 pb-1';
+            row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> ${html}`;
+            box.appendChild(row);
+            if (wasNearBottom) {
+                box.scrollTop = box.scrollHeight;
+                document.getElementById('jump-latest').classList.add('hidden');
+            } else {
+                document.getElementById('jump-latest').classList.remove('hidden');
+            }
         }
+
         async function saveLogToCloud(key, html) {
-            const timeStr = new Date().toLocaleTimeString('pt-PT', { hour12: false }); addLog(key, html, timeStr);
-            try { await fetch(`${FIREBASE_BASE}/quiral_logs/${key}.json`, { method: 'PUT', body: JSON.stringify({ t: timeStr, m: html, ts: Date.now() }) }); } catch (err) {}
+            const timeStr = new Date().toLocaleTimeString('pt-PT', { hour12: false });
+            addLog(key, html, timeStr);
+            try {
+                await fetch(`${FIREBASE_BASE}/quiral_logs/${key}.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ t: timeStr, m: html, ts: Date.now() })
+                });
+            } catch (err) { console.error('Falha ao gravar registo', err); }
         }
+
         async function fetchCloudLogs() {
             try {
-                const data = await (await fetch(LOGS_URL + '?nocache=' + Date.now())).json();
-                if (!data) { if (renderedLogKeys.size > 0) { renderedLogKeys.clear(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; } return; }
-                Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0)).forEach(entry => addLog(entry.key, entry.m, entry.t));
-            } catch (err) {}
+                const res = await fetch(LOGS_URL + '?nocache=' + Date.now());
+                const data = await res.json();
+                if (!data) {
+                    // Nuvem vazia (partida nova ou ainda sem registos) — se tínhamos entradas antes, foi um reset.
+                    if (renderedLogKeys.size > 0) {
+                        renderedLogKeys.clear();
+                        document.getElementById('log-box').innerHTML = '';
+                        document.getElementById('log-box').dataset.empty = '1';
+                    }
+                    return;
+                }
+                const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                entries.forEach(entry => addLog(entry.key, entry.m, entry.t));
+            } catch (err) { console.error('Falha ao buscar registos', err); }
         }
+
         async function startNewMatchLogs() {
-            renderedLogKeys.clear(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1';
-            try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); await fetch(ORDENS_LOG_URL, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' }); } catch (err) {}
-            comandosAtuais = {}; comandosAnteriores = null; marcadoresAtuais = {}; renderComandosOverlay(); renderMarcadores(); saveLogToCloud('sys_start', '<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!');
+            renderedLogKeys.clear();
+            document.getElementById('log-box').innerHTML = '';
+            document.getElementById('log-box').dataset.empty = '1';
+            try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+            try { await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+            try { await fetch(ORDENS_LOG_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+            try { await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' }); } catch (err) {}
+            comandosAtuais = {};
+            comandosAnteriores = null;
+            marcadoresAtuais = {};
+            renderComandosOverlay();
+            renderMarcadores();
+            saveLogToCloud('sys_start', '<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!');
+        }
+
+        function wireResetLogsButton() {
+            document.getElementById('btn-reset-logs').addEventListener('click', async () => {
+                if (!confirm('Limpar todos os registos de combate, ordens táticas, histórico e marcadores atuais?')) return;
+                try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+                try { await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+                try { await fetch(ORDENS_LOG_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
+                try { await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' }); } catch (err) {}
+                renderedLogKeys.clear();
+                comandosAtuais = {};
+                comandosAnteriores = null;
+                marcadoresAtuais = {};
+                renderComandosOverlay();
+                renderMarcadores();
+                document.getElementById('log-box').innerHTML = '';
+                document.getElementById('log-box').dataset.empty = '1';
+            });
+        }
+
+        function wireJumpLatest() {
+            const box = document.getElementById('log-box');
+            const pill = document.getElementById('jump-latest');
+            pill.addEventListener('click', () => { box.scrollTop = box.scrollHeight; pill.classList.add('hidden'); });
+            box.addEventListener('scroll', () => {
+                const nearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 60;
+                if (nearBottom) pill.classList.add('hidden');
+            });
         }
 
         // =====================================
-        // CICLO PRINCIPAL
+        // ANÁLISE DE MUDANÇAS DE ESTADO -> LOGS
+        // =====================================
+        function analisarLogs(newData) {
+            if (!lastNodesData) {
+                lastScoreAzul = parseInt(newData.az || 0);
+                lastScoreAmarelo = parseInt(newData.am || 0);
+                return;
+            }
+
+            const isQuiral = newData.md === "QUIRAL";
+            const currentAzul = parseInt(newData.az || 0);
+            const currentAmarelo = parseInt(newData.am || 0);
+            const scoredBlue = currentAzul > lastScoreAzul;
+            const scoredYellow = currentAmarelo > lastScoreAmarelo;
+            const tp = (newData.tp || '00:00').replace(':', '');
+            const placar = ` <span class="text-gray-500">[${currentAzul}x${currentAmarelo}]</span>`;
+
+            newData.nos.forEach((node, i) => {
+                const prev = lastNodesData[i];
+                if (!prev) return;
+                const id = i + 1;
+
+                // Conectividade do nó (independe do modo de jogo)
+                if (node.online !== prev.online) {
+                    if (node.online) saveLogToCloud(`n${id}_on_${tp}`, `Nó ${id} <span class="text-green-400">voltou a ficar em linha</span>.`);
+                    else saveLogToCloud(`n${id}_off_${tp}`, `Nó ${id} <span class="text-gray-400 font-bold">perdeu conexão (offline)</span>.`);
+                }
+
+                if (!isQuiral && node.owner !== prev.owner && node.online) {
+                    if (node.owner === 1) saveLogToCloud(`n${id}_own1_${tp}`, `Nó ${id} dominado pelo <span class="text-blue-400 font-bold">AZUL</span>.${placar}`);
+                    else if (node.owner === 2) saveLogToCloud(`n${id}_own2_${tp}`, `Nó ${id} dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.${placar}`);
+                    else if (node.owner === 0 && prev.owner !== 0) saveLogToCloud(`n${id}_neutro_${tp}`, `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.${placar}`);
+                }
+
+                // As capturas do modo Quiral (nó ativo -> inativo) NÃO são mais logadas
+                // por aqui. A própria central agora escreve isso direto no Firebase
+                // (/quiral_logs) assim que recebe o evento por LoRa — ela sabe com
+                // certeza qual time capturou, sem precisar adivinhar pelo placar.
+                // Continuamos avisando quando o nó REATIVA, porque isso a central
+                // ainda não envia pro Firebase.
+                if (isQuiral && node.ativo !== prev.ativo && node.online && node.ativo) {
+                    saveLogToCloud(`n${id}_reativado_${tp}`, `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
+                }
+            });
+
+            lastScoreAzul = currentAzul;
+            lastScoreAmarelo = currentAmarelo;
+        }
+
+        // =====================================
+        // ESTADO DE LIGAÇÃO / CONECTIVIDADE
         // =====================================
         function updateStatusBadge(type, playing) {
             const badge = document.getElementById('status-badge');
-            if (type === 'ok' && playing) { badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse"; } 
-            else if (type === 'ok' && !playing) { badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600"; } 
-            else { badge.innerText = "FALHA DE SINAL FIREBASE"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-red-900/50 text-red-400 border border-red-600 pulse"; }
+            if (type === 'ok' && playing) {
+                badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO";
+                badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse";
+            } else if (type === 'ok' && !playing) {
+                badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO";
+                badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600";
+            } else {
+                badge.innerText = "FALHA DE SINAL FIREBASE";
+                badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-red-900/50 text-red-400 border border-red-600 pulse";
+            }
         }
 
+        function tickConnDetail() {
+            const el = document.getElementById('conn-detail');
+            if (!lastSuccessfulFetch) { el.textContent = ''; return; }
+            const secs = Math.floor((Date.now() - lastSuccessfulFetch) / 1000);
+            if (secs < 4) { el.textContent = 'Atualizado agora mesmo'; el.className = 'text-[10px] text-gray-600 mt-1'; }
+            else if (secs < 15) { el.textContent = `Atualizado há ${secs}s`; el.className = 'text-[10px] text-gray-600 mt-1'; }
+            else { el.textContent = `SEM DADOS NOVOS HÁ ${secs}s — a mostrar último estado conhecido`; el.className = 'text-[10px] text-amber-500 mt-1 font-bold'; }
+        }
+
+        // =====================================
+        // CICLO PRINCIPAL DE DADOS
+        // =====================================
         async function fetchUplinkData() {
             try {
-                const data = await (await fetch(GAME_URL + "?nocache=" + Date.now())).json(); if (!data) return;
-                lastSuccessfulFetch = Date.now(); lastFullData = data; document.getElementById('last-update').innerText = new Date().toLocaleTimeString('pt-PT');
+                const response = await fetch(GAME_URL + "?nocache=" + Date.now());
+                const data = await response.json();
+                if (!data) return;
+
+                lastSuccessfulFetch = Date.now();
+                lastFullData = data;
+                document.getElementById('last-update').innerText = new Date().toLocaleTimeString('pt-PT');
+
                 const isPlaying = (data.st === "ON");
-                document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0"; document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0";
-                document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00"; document.getElementById('game-mode').innerText = "MODO: " + (data.md || "--");
+                document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0";
+                document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0";
+                document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00";
+                document.getElementById('game-mode').innerText = "MODO: " + (data.md || "--");
+
                 updateStatusBadge('ok', isPlaying);
 
-                if (isPlaying && lastGameState !== "ON") { await startNewMatchLogs(); } 
-                else if (!isPlaying && lastGameState === "ON") {
-                    const fa = parseInt(data.az || 0), fm = parseInt(data.am || 0);
-                    saveLogToCloud('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Placar final: <span class="text-gray-300">${fa}x${fm}</span> — ${fa > fm ? '<span class="text-blue-400 font-bold">EQUIPA AZUL VENCEU</span>' : (fm > fa ? '<span class="text-yellow-400 font-bold">EQUIPA AMARELA VENCEU</span>' : '<span class="text-gray-300 font-bold">EMPATE</span>')}`);
+                if (isPlaying && lastGameState !== "ON") {
+                    await startNewMatchLogs();
+                } else if (!isPlaying && lastGameState === "ON") {
+                    const finalAzul = parseInt(data.az || 0);
+                    const finalAmarelo = parseInt(data.am || 0);
+                    let vencedor;
+                    if (finalAzul > finalAmarelo) vencedor = '<span class="text-blue-400 font-bold">EQUIPA AZUL VENCEU</span>';
+                    else if (finalAmarelo > finalAzul) vencedor = '<span class="text-yellow-400 font-bold">EQUIPA AMARELA VENCEU</span>';
+                    else vencedor = '<span class="text-gray-300 font-bold">EMPATE</span>';
+                    saveLogToCloud('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Placar final: <span class="text-gray-300">${finalAzul}x${finalAmarelo}</span> — ${vencedor}`);
                 }
 
                 if (data.nos && Array.isArray(data.nos)) {
                     ensureNodeElements(data.nos.length);
-                    if (isPlaying) {
-                        const tp = (data.tp || '00:00').replace(':', ''); const placar = ` <span class="text-gray-500">[${data.az}x${data.am}]</span>`;
-                        data.nos.forEach((node, i) => {
-                            const prev = lastNodesData ? lastNodesData[i] : null; if (!prev) return; const id = i + 1;
-                            if (node.online !== prev.online) saveLogToCloud(`n${id}_${node.online?'on':'off'}_${tp}`, `Nó ${id} <span class="text-${node.online?'green':'gray'}-400 font-bold">${node.online?'voltou a ficar em linha':'perdeu conexão (offline)'}</span>.`);
-                            if (data.md !== "QUIRAL" && node.owner !== prev.owner && node.online) saveLogToCloud(`n${id}_own_${tp}`, `Nó ${id} ${node.owner===1?'dominado pelo <span class="text-blue-400 font-bold">AZUL</span>':(node.owner===2?'dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>':'<span class="text-gray-400 font-bold">NEUTRALIZADO</span>')}.${placar}`);
-                            if (data.md === "QUIRAL" && node.ativo !== prev.ativo && node.online) {
-                                if (node.ativo) saveLogToCloud(`n${id}_reativado_${tp}`, `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
-                                else saveLogToCloud(`n${id}_cap_${tp}`, `Nó ${id} capturado por <span class="${data.az>lastScoreAzul?'text-blue-400':(data.am>lastScoreAmarelo?'text-yellow-400':'text-red-400')} font-bold">${data.az>lastScoreAzul?'AZUL':(data.am>lastScoreAmarelo?'AMARELO':'CAPTURADO')}</span>.${placar}`);
-                            }
-                        });
-                        lastScoreAzul = parseInt(data.az || 0); lastScoreAmarelo = parseInt(data.am || 0);
-                    }
-                    renderVisuals(data); updateNodeCount(data.nos); lastNodesData = JSON.parse(JSON.stringify(data.nos));
+                    if (isPlaying) analisarLogs(data);
+                    renderVisuals(data);
+                    updateNodeCount(data.nos);
+                    lastNodesData = JSON.parse(JSON.stringify(data.nos));
                 }
+
                 lastGameState = data.st;
-            } catch (err) { updateStatusBadge('error'); }
+            } catch (error) {
+                console.error("Uplink failed:", error);
+                updateStatusBadge('error');
+            }
         }
 
         async function fetchConfig() {
             try {
-                const data = await (await fetch(CONFIG_URL + "?nocache=" + Date.now())).json(); if (!data) return;
+                const res = await fetch(CONFIG_URL + "?nocache=" + Date.now());
+                const data = await res.json();
+                if (!data) return;
                 if (data.positions && !layoutPendente) {
                     nodePositions = fromFirebaseKeyed(data.positions);
-                    Object.keys(nodePositions).forEach(id => { const el = document.getElementById(`map-node-${id}`); if (el) { el.style.left = nodePositions[id].x + '%'; el.style.top = nodePositions[id].y + '%'; } });
+                    // Se os nós do mapa já tiverem sido criados antes desta resposta chegar
+                    // (corrida entre fetchConfig e fetchUplinkData), reposiciona os que já existem.
+                    Object.keys(nodePositions).forEach(id => {
+                        const el = document.getElementById(`map-node-${id}`);
+                        if (el) {
+                            el.style.left = nodePositions[id].x + '%';
+                            el.style.top = nodePositions[id].y + '%';
+                        }
+                    });
                 }
-                if (data.mapImage) {
-                    const img = document.getElementById('map-bg'); img.onload = () => document.getElementById('map-container').style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight; img.src = data.mapImage; img.classList.remove('hidden'); document.getElementById('map-placeholder').classList.add('hidden');
+                if (data.mapImage) setMapImage(data.mapImage);
+            } catch (err) { console.error('Falha ao buscar configuração do mapa', err); }
+        }
+
+        function wireFullscreen() {
+            document.getElementById('btn-fullscreen').addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen?.().catch(() => {});
+                } else {
+                    document.exitFullscreen?.();
                 }
-            } catch (err) {}
+            });
         }
 
         function initMap() {
-            wireMapUpload(); wireMapaClickParaMarcador(); applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
-            if (localStorage.getItem('quiral_modo_noturno') === '1') toggleModoNoturno(true); atualizarIndicadorFila();
-            document.getElementById('btn-fullscreen').addEventListener('click', () => !document.fullscreenElement ? document.documentElement.requestFullscreen?.() : document.exitFullscreen?.());
-            document.getElementById('btn-reset-logs').addEventListener('click', async () => {
-                if (!confirm('Limpar todos os registos?')) return;
-                await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); await fetch(ORDENS_LOG_URL, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' });
-                renderedLogKeys.clear(); comandosAtuais = {}; comandosAnteriores = null; marcadoresAtuais = {}; renderComandosOverlay(); renderMarcadores(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1';
-            });
-            const box = document.getElementById('log-box'); const pill = document.getElementById('jump-latest');
-            pill.addEventListener('click', () => { box.scrollTop = box.scrollHeight; pill.classList.add('hidden'); });
-            box.addEventListener('scroll', () => { if ((box.scrollHeight - box.scrollTop - box.clientHeight) < 60) pill.classList.add('hidden'); });
+            wireMapUpload();
+            wireResetLogsButton();
+            wireJumpLatest();
+            wireFullscreen();
+            wireMapaClickParaMarcador();
+            applySessionUI();
+            document.getElementById('log-box').dataset.empty = '1';
+            if (localStorage.getItem('quiral_modo_noturno') === '1') toggleModoNoturno(true);
+            atualizarIndicadorFila();
         }
 
+        // =====================================
+        // BOOT DO SISTEMA WEB
+        // =====================================
         async function bootDashboard() {
-            initMap(); await fetchConfig(); fetchUplinkData(); fetchCloudLogs(); if (session) { fetchComandos(); fetchMarcadores(); }
-            setInterval(fetchUplinkData, 2000); setInterval(fetchCloudLogs, 2500); setInterval(() => { const el = document.getElementById('conn-detail'); if (!lastSuccessfulFetch) return; const s = Math.floor((Date.now() - lastSuccessfulFetch) / 1000); el.textContent = s < 4 ? 'Atualizado agora' : (s < 15 ? `Atualizado há ${s}s` : `SEM SINAL HÁ ${s}s`); el.className = s < 15 ? 'text-[10px] text-gray-600 mt-1' : 'text-[10px] text-amber-500 mt-1 font-bold'; }, 1000);
-            setInterval(() => { if (session) { fetchComandos(); fetchMarcadores(); } }, 3000); setInterval(fetchConfig, 8000); setInterval(processarFilaEscritas, 5000); window.addEventListener('online', processarFilaEscritas);
+            initMap();
+            await fetchConfig();
+            fetchUplinkData();
+            fetchCloudLogs();
+            if (session) { fetchComandos(); fetchMarcadores(); }
+            setInterval(fetchUplinkData, 2000);
+            setInterval(fetchCloudLogs, 2500);
+            setInterval(tickConnDetail, 1000);
+            setInterval(() => { if (session) { fetchComandos(); fetchMarcadores(); } }, 3000);
+            setInterval(fetchConfig, 8000);
+            setInterval(processarFilaEscritas, 5000);
+            window.addEventListener('online', processarFilaEscritas);
         }
 
         bootDashboard();
-        if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch((err) => console.error('Falha ao registar service worker', err));
+            });
+        }
     </script>
 </body>
 </html>
