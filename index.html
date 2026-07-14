@@ -1,1061 +1,786 @@
-/*
- * =========================================================================
- * REDE QUIRAL - CENTRAL DE COMANDO LORA (V13.2 - ANTI-BURST FIX EDITION)
- * =========================================================================
- * Placa: ESP32-2432S028 (CYD)
- * Funcionalidades: UI Premium, Fluxo de Cooldown Original, Radar de Ping, 
- * Firebase Dual-Core.
- * ATUALIZAÇÃO v13.2: Reintegração do Filtro Anti-Burst para corrigir o
- * "Lag/Falso Odisseu" causado pelas Rajadas Táticas dos Nós de campo.
- */
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rede Quiral - Comando Tático</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <meta name="theme-color" content="#050505">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9B%B0%EF%B8%8F%3C/text%3E%3C/svg%3E">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+        body { font-family: 'Share Tech Mono', monospace; background-color: #050505; color: #fff; }
+        .neon-text { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #0ff; }
+        .pulse { animation: pulse-animation 2s infinite; }
+        @keyframes pulse-animation { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+        .bg-chiral { background: linear-gradient(180deg, #1a1a1a 0%, #050505 100%); }
+        .log-container::-webkit-scrollbar { width: 6px; }
+        .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        .log-entry { animation: fade-in 0.35s ease-out; }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-#include <Arduino.h>
-#include <SPI.h>
-#include <FS.h>
-#include <SD.h>
-#include <TFT_eSPI.h>
-#include <XPT2046_Touchscreen.h>
-#include <AnimatedGIF.h>
-#include <Wire.h>
-#include "RTClib.h"
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <time.h>
+        /* Modo noturno */
+        body.modo-noturno { filter: grayscale(0.25) sepia(1) hue-rotate(-50deg) saturate(6) brightness(0.65); transition: filter 0.3s ease; }
 
-// ==========================================
-// CONFIGURAÇÕES DE INTERNET E FIREBASE
-// ==========================================
-const String FIREBASE_URL = "https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json";
+        .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; touch-action: none; cursor: pointer; }
+        .map-node.admin-mode { cursor: grab; }
+        .map-node.admin-mode:active { cursor: grabbing; }
+        .map-node.active-blue { background-color: rgba(59, 130, 246, 0.85); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; color: #fff; }
+        .map-node.active-yellow { background-color: rgba(234, 179, 8, 0.85); border-color: #fde047; box-shadow: 0 0 15px #eab308; color: #000; }
+        .map-node.active-green { background-color: rgba(34, 197, 94, 0.85); border-color: #4ade80; box-shadow: 0 0 15px #22c55e; color: #fff; }
+        .map-node.inactive-red { background-color: rgba(239, 68, 68, 0.85); border-color: #f87171; box-shadow: 0 0 15px #ef4444; color: #fff; }
+        .map-node.offline { background-color: rgba(31, 41, 55, 0.85); border-color: #4b5563; color: #9ca3af; }
 
-// ==========================================
-// PINOS DE HARDWARE
-// ==========================================
-#define SD_SCK  18
-#define SD_MISO 19
-#define SD_MOSI 23
-#define SD_CS   5
+        button:focus-visible, label:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
+    </style>
+</head>
+<body class="bg-chiral min-h-screen p-2 md:p-4">
 
-#define XPT2046_IRQ 36
-#define XPT2046_MOSI 32
-#define XPT2046_MISO 39
-#define XPT2046_CLK 25
-#define XPT2046_CS 33
+    <!-- Modais -->
+    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center shadow-2xl max-w-sm mx-4">
+            <h3 class="text-xl text-yellow-500 mb-2 font-bold">AVISO TÁTICO</h3>
+            <p id="modal-text" class="text-gray-300 mb-4"></p>
+            <button onclick="closeModal()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-500">ENTENDIDO</button>
+        </div>
+    </div>
 
-#define CYD_LED_BACKLIGHT 21
+    <div id="login-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
+            <h3 class="text-xl text-red-500 mb-4 font-bold text-center">ACESSO RESTRITO</h3>
+            <input type="text" id="login-user" placeholder="Usuário" autocomplete="off" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-blue-500 focus:outline-none">
+            <input type="password" id="login-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-blue-500 focus:outline-none" onkeydown="if(event.key==='Enter') autenticar()">
+            <p id="login-erro" class="text-red-400 text-xs mb-3 hidden">Usuário ou senha incorretos.</p>
+            <div class="flex justify-between">
+                <button onclick="closeLoginModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">CANCELAR</button>
+                <button onclick="autenticar()" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded font-bold border border-blue-600">ENTRAR</button>
+            </div>
+        </div>
+    </div>
 
-// Pinos LoRa (UART2)
-#define LORA_RX 35 
-#define LORA_TX 22  
-#define LORA_AUX 27 
+    <div id="contas-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-md mx-4 w-full max-h-[85vh] overflow-y-auto">
+            <h3 class="text-lg text-gray-200 mb-4 font-bold text-center">CONTAS DE ACESSO</h3>
+            <div id="contas-lista" class="space-y-4"></div>
+            <button onclick="closeContasModal()" class="w-full mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">FECHAR</button>
+        </div>
+    </div>
 
-// Pinos I2C RTC DS3231 
-#define I2C_SDA 32
-#define I2C_SCL 33
+    <div id="ordem-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-xs mx-4 w-full text-center">
+            <h3 id="ordem-titulo" class="text-lg text-gray-200 mb-4 font-bold">NÓ 1</h3>
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <button onclick="emitirOrdem('atacar')" class="px-3 py-3 bg-red-900 hover:bg-red-800 text-white rounded font-bold border border-red-600">⚔ ATACAR</button>
+                <button onclick="emitirOrdem('defender')" class="px-3 py-3 bg-blue-900 hover:bg-blue-800 text-white rounded font-bold border border-blue-600">🛡 DEFENDER</button>
+            </div>
+            <button onclick="emitirOrdem(null)" class="w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-sm border border-gray-600 mb-2">Cancelar ordem</button>
+            <button onclick="closeOrdemModal()" class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm border border-gray-600">Fechar</button>
+        </div>
+    </div>
 
-// ==========================================
-// CORES DA INTERFACE PREMIUM
-// ==========================================
-#define TFT_CHIRAL_GOLD 0xCE60 
-#define TFT_BRIDGES_BLUE 0x053F 
-#define TFT_DANGER_RED 0xF800
-#define TFT_BLACK 0x0000
-#define TFT_DARKGREY 0x2124
-#define TFT_WHITE 0xFFFF
-#define TFT_GREEN 0x07E0
-#define TFT_PINK 0xF81F 
-#define TFT_PURPLE 0x780F      
-#define TFT_LIGHTBLUE 0x07FF   
-#define TFT_DARKGREEN 0x6000   
-#define TFT_ORANGE 0xFD20
+    <div id="historico-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full max-h-[80vh] flex flex-col">
+            <h3 class="text-lg text-gray-200 mb-3 font-bold text-center">HISTÓRICO DE ORDENS</h3>
+            <div id="historico-lista" class="flex-1 overflow-y-auto space-y-2 text-xs font-sans mb-3"></div>
+            <button onclick="closeHistoricoModal()" class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm border border-gray-600">Fechar</button>
+        </div>
+    </div>
 
-// ==========================================
-// OBJETOS GLOBAIS
-// ==========================================
-TFT_eSPI tft = TFT_eSPI(); 
-SPIClass mySpi = SPIClass(VSPI);
-SPIClass sdSpi = SPIClass(HSPI); 
-XPT2046_Touchscreen ts(XPT2046_CS, XPT2046_IRQ);
-RTC_DS3231 rtc;
-AnimatedGIF gif;
-HardwareSerial LoRaSerial(2);
+    <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-[70] bg-gray-900 border border-green-600 text-green-300 text-xs px-4 py-2 rounded-full shadow-lg transition-opacity"></div>
+    <div id="modo-noturno-overlay" class="hidden fixed inset-0 z-[65] pointer-events-none" style="background:#200; mix-blend-mode:multiply;"></div>
 
-// ==========================================
-// PROTOCOLO LORA V1
-// ==========================================
-const uint16_t QR_MAGIC = 0x5152;
-const uint8_t QR_VERSION = 1;
-const uint8_t QR_CENTRAL_ID = 0;
-const uint8_t QR_BROADCAST_ID = 255;
-const int NODE_COUNT = 10;
+    <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4 relative">
+        <button id="btn-fullscreen" title="Ecrã inteiro" class="absolute right-0 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">⛶</button>
+        <button id="btn-noturno" onclick="toggleModoNoturno()" title="Modo noturno" class="absolute right-8 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">🌙</button>
+        <button id="btn-wakelock" onclick="toggleWakeLock()" title="Manter tela ligada" class="absolute right-16 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">💡</button>
+        <button id="btn-login" onclick="openLoginModal()" title="Entrar" class="absolute left-0 top-0 text-gray-500 hover:text-white text-xs px-2 py-1 border border-gray-700 rounded">🔒 ENTRAR</button>
+        <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider">[ COMANDO QUIRAL ]</h1>
+        <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">A ESTABELECER LIGAÇÃO...</div>
+        <div id="conn-detail" class="text-[10px] text-gray-600 mt-1"></div>
+        <div id="fila-indicador" class="hidden text-[10px] text-amber-500 mt-1 font-bold"></div>
+        <div id="session-badge" class="hidden mt-2 text-xs"></div>
+    </header>
 
-enum PacketType : uint8_t { PKT_HEARTBEAT = 1, PKT_START_GAME = 2, PKT_STOP_GAME = 3, PKT_CAPTURE_EVENT = 4, PKT_REACTIVATE_NODE = 5, PKT_DEPURACAO = 6, PKT_IDLE = 7, PKT_NODE_STATUS = 8, PKT_ODISSEU = 9 };
-enum GameMode : uint8_t { MODE_QUIRAL = 1, MODE_CONQUISTA = 2, MODE_DEPURACAO = 3, MODE_DOMINACAO = 4 };
-enum Team : uint8_t { TEAM_NONE = 0, TEAM_BLUE = 1, TEAM_YELLOW = 2 };
+    <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div class="lg:col-span-2 space-y-4 md:space-y-6">
+            <!-- Placar -->
+            <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg shadow-lg relative overflow-hidden">
+                <div class="flex justify-between items-center relative z-10">
+                    <div class="text-center w-1/3">
+                        <h3 class="text-lg md:text-xl text-blue-500 font-bold mb-1">AZUL</h3>
+                        <div id="score-azul" class="text-4xl md:text-6xl font-bold text-blue-400 neon-text">0</div>
+                    </div>
+                    <div class="text-center w-1/3">
+                        <div id="game-time" class="text-2xl md:text-4xl font-bold text-white tracking-widest">00:00</div>
+                        <p id="game-mode" class="text-gray-400 text-xs md:text-sm mt-1">MODO: --</p>
+                    </div>
+                    <div class="text-center w-1/3">
+                        <h3 class="text-lg md:text-xl text-yellow-500 font-bold mb-1">AMARELA</h3>
+                        <div id="score-amarelo" class="text-4xl md:text-6xl font-bold text-yellow-400" style="text-shadow: 0 0 10px #a60;">0</div>
+                    </div>
+                </div>
+            </div>
 
-struct QuiralPacket {
-  uint16_t magic; 
-  uint8_t version; 
-  uint8_t type; 
-  uint8_t fromId; 
-  uint8_t toId; 
-  uint32_t msgId; 
-  uint8_t mode; 
-  uint8_t team; 
-  uint8_t active;
-  uint16_t gameRemainingSec; 
-  uint16_t nodeRemainingSec; 
-  uint16_t confMinSec; 
-  uint16_t confMaxSec; 
-  uint16_t scoreBlue; 
-  uint16_t scoreYellow; 
-  uint8_t crc;
-} __attribute__((packed));
+            <!-- Mapa Tático -->
+            <div class="bg-gray-900/80 border border-gray-700 p-2 md:p-4 rounded-lg shadow-lg">
+                <div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
+                    <h2 class="text-sm md:text-base text-gray-400 font-bold">MAPA TÁTICO <span id="node-count" class="text-gray-600 font-normal"></span></h2>
+                    <div class="flex gap-2 flex-wrap justify-end">
+                        <button id="btn-marcador" onclick="ativarModoMarcador()" class="hidden bg-purple-950 hover:bg-purple-900 text-xs text-purple-300 px-3 py-1 rounded border border-purple-700 transition-colors">📍 MARCADOR</button>
+                        <button id="btn-historico" onclick="openHistoricoModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">HISTÓRICO</button>
+                        <button id="btn-exportar" onclick="exportarLog()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">EXPORTAR</button>
+                        <button id="btn-salvar-layout" onclick="salvarLayout()" class="hidden bg-green-900 hover:bg-green-800 text-xs text-green-200 px-3 py-1 rounded border border-green-600 transition-colors">SALVAR LAYOUT</button>
+                        <button id="btn-reset-logs" class="hidden bg-red-950 hover:bg-red-900 text-xs text-red-300 px-3 py-1 rounded border border-red-800 transition-colors">LIMPAR REGISTOS</button>
+                        <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">CONTAS</button>
+                        <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">IMPORTAR MAPA<input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden"></label>
+                    </div>
+                </div>
 
-uint8_t crc8(const uint8_t* data, size_t len) {
-  uint8_t crc = 0;
-  for (size_t i = 0; i < len; i++) { crc ^= data[i]; for (uint8_t b = 0; b < 8; b++) crc = (crc & 0x80) ? (crc << 1) ^ 0x07 : (crc << 1); }
-  return crc;
-}
+                <!-- CAMADA DO MAPA LIMPA (SEM POINTER-EVENTS-NONE, TOUCH-NONE GERENCIA ARRASTO) -->
+                <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none" style="aspect-ratio: 16/9;">
+                    <img id="map-bg" class="absolute inset-0 w-full h-full object-contain hidden pointer-events-none" alt="Mapa do Campo">
+                    <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none text-center px-6">
+                        Aguardando sincronização de mapa da nuvem...
+                    </div>
+                    <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
+                    <div id="map-marcadores-layer" class="absolute inset-0 z-10"></div>
+                </div>
+                
+                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós para reposicionar e depois toque em "SALVAR LAYOUT" para publicar as novas posições para todos.</p>
+                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mt-2 text-center">Toque em qualquer ponto vazio do mapa para colocar um marcador da sua equipa.</p>
 
-void preparePacket(QuiralPacket& pkt) {
-  pkt.magic = QR_MAGIC;
-  pkt.version = QR_VERSION;
-  pkt.crc = 0;
-  pkt.crc = crc8((const uint8_t*)&pkt, sizeof(pkt));
-}
+                <details class="mt-3 text-xs text-gray-500">
+                    <summary class="cursor-pointer select-none text-gray-400">Legenda do mapa</summary>
+                    <div class="grid grid-cols-2 gap-2 mt-2 text-[11px]">
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(34,197,94,.85)"></span> Ativo / dominado (verde)</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(239,68,68,.85)"></span> Capturado / neutralizado</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(59,130,246,.85)"></span> Equipa Azul</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(234,179,8,.85)"></span> Equipa Amarela</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(31,41,55,.85)"></span> Offline / neutro</div>
+                        <div class="flex items-center gap-2"><span class="w-4 h-4 rounded-full inline-flex items-center justify-center bg-red-600 text-[9px]">⚔</span> Ordem: atacar</div>
+                        <div class="flex items-center gap-2"><span class="w-4 h-4 rounded-full inline-flex items-center justify-center bg-blue-600 text-[9px]">🛡</span> Ordem: defender</div>
+                        <div class="flex items-center gap-2"><span class="text-purple-400">📍</span> Marcador tático da equipa</div>
+                    </div>
+                </details>
+            </div>
 
-bool packetValid(const QuiralPacket& pkt) {
-  if (pkt.magic != QR_MAGIC || pkt.version != QR_VERSION) return false;
-  QuiralPacket copy = pkt; uint8_t expected = copy.crc; copy.crc = 0; 
-  return crc8((const uint8_t*)&copy, sizeof(copy)) == expected;
-}
+            <!-- Radar Clássico -->
+            <div class="bg-gray-900/50 border border-gray-800 p-3 rounded-lg">
+                <h2 class="text-xs text-gray-500 mb-2 font-bold text-center">RADAR CLÁSSICO</h2>
+                <div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2"></div>
+            </div>
+        </div>
 
-uint32_t centralMsgCounter = 0;
-#define HISTORY_SIZE 30
-uint32_t msgHistory[HISTORY_SIZE];
-int historyIndex = 0;
+        <!-- COLUNA DIREITA: Registo de Combate -->
+        <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] lg:h-auto relative">
+            <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
+                <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                    REGISTO DE COMBATE
+                </h2>
+                <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
+            </div>
+            <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans">
+                <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
+            </div>
+            <button id="jump-latest" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 bg-green-700 hover:bg-green-600 text-[11px] px-3 py-1 rounded-full shadow-lg border border-green-400">Novos registos ↓</button>
+            <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500">
+                <span>UPLINK: <span id="last-update" class="text-green-500">--</span></span>
+                <span>DB: FIREBASE_RTDB</span>
+            </div>
+        </div>
+    </main>
 
-bool isMessageSeen(uint32_t id) {
-  for(int i=0; i<HISTORY_SIZE; i++) { if(msgHistory[i] == id) return true; } return false;
-}
-void addMessageToHistory(uint32_t id) {
-  msgHistory[historyIndex] = id; historyIndex = (historyIndex + 1) % HISTORY_SIZE;
-}
+    <script>
+        // =====================================
+        // CONFIGURAÇÃO E ESTADO GLOBAL
+        // =====================================
+        const FIREBASE_BASE = "https://quiral-f97a2-default-rtdb.firebaseio.com";
+        const GAME_URL       = FIREBASE_BASE + "/quiral.json";           
+        const CONFIG_URL     = FIREBASE_BASE + "/quiral_config.json";    
+        const LOGS_URL       = FIREBASE_BASE + "/quiral_logs.json";      
+        const AUTH_URL       = FIREBASE_BASE + "/quiral_auth.json";      
+        const COMANDOS_URL   = FIREBASE_BASE + "/quiral_comandos.json";  
+        const ORDENS_LOG_URL = FIREBASE_BASE + "/quiral_ordens_log.json";
 
-struct NodeState {
-  bool online; bool ativo; int tempoRestante; int owner; unsigned long lastSeen;
-};
-NodeState nodes[NODE_COUNT + 1]; 
+        const ORDEM_EXPIRA_MIN = 10; 
 
-// ==========================================
-// VARIÁVEIS DE JOGO E ESTADO
-// ==========================================
-// Fluxo: 10:WiFi -> 11:Teclado -> 1:Menu -> 2:TempoJogo -> 3:TipoCooldown -> 4:AjusteCooldown -> 5:Lobby -> 6:GameOver | 9:Depuracao
-int telaAtual = 10; 
-int modoSelecionado = MODE_QUIRAL; 
-int pontuacaoAzul = 0; int pontuacaoAmarelo = 0;
-unsigned long tempoInicioJogo = 0;
-unsigned long duracaoJogo = 15 * 60 * 1000UL; 
-bool jogoRodando = false;
+        const ROLE_KEYS = ['admin', 'comandante_azul', 'jogador_azul', 'comandante_amarelo', 'jogador_amarelo'];
+        const ROLE_LABELS = { admin: 'Administrador', comandante_azul: 'Comandante Azul', jogador_azul: 'Jogador Azul', comandante_amarelo: 'Comandante Amarelo', jogador_amarelo: 'Jogador Amarelo' };
+        function roleTeamOf(key) { return key.endsWith('_azul') ? 'azul' : key.endsWith('_amarelo') ? 'amarelo' : null; }
+        function roleTypeOf(key) { return key.startsWith('comandante') ? 'comandante' : key.startsWith('jogador') ? 'jogador' : 'admin'; }
 
-int horasConfiguradas = 0; 
-int minutosConfigurados = 15;  
-bool cooldownAleatorio = true;
-int respawnAleatorioMin = 1; 
-int respawnAleatorioMax = 5; 
-int respawnFixoMinutos = 1;  
+        let session = null;
+        try { session = JSON.parse(sessionStorage.getItem('quiral_session')); } catch (err) {}
+        let isAdmin = !!(session && session.role === 'admin');
 
-unsigned long lastScoreTimeBlue = 0; unsigned long lastScoreTimeYellow = 0;
-int comboCountBlue = 0; int comboCountYellow = 0; const int COMBO_WINDOW = 15000;
-bool odisseuTriggered = false; String odisseuMessage = ""; unsigned long odisseuSince = 0;
+        let lastGameState = null; let lastFullData = null; let lastNodesData = null;
+        let lastScoreAzul = 0; let lastScoreAmarelo = 0; let lastSuccessfulFetch = 0;
+        let currentNodeCount = 0; let nodePositions = {}; let marcadoresAtuais = {};   
+        let comandosAtuais = {}; let comandosAnteriores = null; let ordemNodeAlvo = null;    
+        let colocandoMarcador = false; let wakeLock = null; const renderedLogKeys = new Set();
 
-unsigned long lastTouchTime = 0;
-bool touchIniciado = false; 
-bool sdDisponivel = false; 
-String currentLogFile = "";
-bool rtcDisponivel = false;
+        // =====================================
+        // FILA DE RETRY E HELPERS
+        // =====================================
+        let filaEscritas = [];
+        try { filaEscritas = JSON.parse(localStorage.getItem('quiral_fila') || '[]'); } catch (err) { filaEscritas = []; }
 
-// ==========================================
-// VARIÁVEIS DO SCANNER WI-FI E TECLADO
-// ==========================================
-String ssids[6];
-bool hasAuth[6];
-int networksFound = 0;
-int selectedSSIDIndex = -1;
-String inputPassword = "";
-bool wifiSkipped = false;
-bool kb_shifted = false;
-
-const char kbd_low[8][5] = {
-  {'a','b','c','d','e'},
-  {'f','g','h','i','j'},
-  {'k','l','m','n','o'},
-  {'p','q','r','s','t'},
-  {'u','v','w','x','y'},
-  {'z','0','1','2','3'},
-  {'4','5','6','7','8'},
-  {'9','^',' ','<','#'} // ^ = shift, < = back, # = OK
-};
-
-const char kbd_up[8][5] = {
-  {'A','B','C','D','E'},
-  {'F','G','H','I','J'},
-  {'K','L','M','N','O'},
-  {'P','Q','R','S','T'},
-  {'U','V','W','X','Y'},
-  {'Z','!','@','$','%'},
-  {'&','*','-','_','+'},
-  {'=','^',' ','<','#'}
-};
-
-// ==========================================
-// DECODIFICADOR DE GIF ANIMADO (CORRIGIDO)
-// ==========================================
-File gifFile;
-int xOffset = 0, yOffset = 0;
-
-void * GIFOpenFile(const char *fname, int32_t *pSize) {
-  gifFile = SD.open(fname);
-  if (gifFile) { *pSize = gifFile.size(); return (void *)&gifFile; }
-  return NULL;
-}
-
-void GIFCloseFile(void *pHandle) { 
-  File *f = static_cast<File *>(pHandle); 
-  if (f != NULL) f->close(); 
-}
-
-int32_t GIFReadFile(GIFFILE *pFile, uint8_t *pBuf, int32_t iLen) {
-  int32_t iBytesRead = iLen; 
-  File *f = static_cast<File *>(pFile->fHandle);
-  if ((pFile->iSize - pFile->iPos) < iLen) { iBytesRead = pFile->iSize - pFile->iPos; }
-  if (iBytesRead <= 0) return 0;
-  iBytesRead = (int32_t)f->read(pBuf, iBytesRead); 
-  pFile->iPos = f->position(); 
-  return iBytesRead;
-}
-
-int32_t GIFSeekFile(GIFFILE *pFile, int32_t iPosition) {
-  File *f = static_cast<File *>(pFile->fHandle); 
-  f->seek(iPosition);
-  pFile->iPos = (int32_t)f->position(); 
-  return pFile->iPos;
-}
-
-void GIFDraw(GIFDRAW *pDraw) {
-  uint8_t *s; uint16_t *d, *usPalette, usTemp[320]; int x, y, iWidth;
-  iWidth = pDraw->iWidth; if (iWidth > tft.width()) iWidth = tft.width();
-  usPalette = pDraw->pPalette; y = pDraw->iY + pDraw->y; s = pDraw->pPixels; d = usTemp;
-  tft.setSwapBytes(true); 
-  if (pDraw->ucHasTransparency) {
-    uint8_t c, ucTransparent = pDraw->ucTransparent; 
-    for (x=0; x < iWidth; x++) { c = *s++; if (c != ucTransparent) *d = usPalette[c]; else *d = TFT_PINK; d++; }
-    tft.pushImage(pDraw->iX + xOffset, y + yOffset, iWidth, 1, usTemp, TFT_PINK);
-  } else {
-    for (x=0; x < iWidth; x++) *d++ = usPalette[*s++];
-    tft.pushImage(pDraw->iX + xOffset, y + yOffset, iWidth, 1, usTemp);
-  }
-}
-
-void reproduzirGif(const char* filepath) {
-  if (touchIniciado) mySpi.end();
-  tft.fillScreen(TFT_BLACK);
-  if (sdDisponivel && SD.exists(filepath)) {
-    if (gif.open(filepath, GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw)) {
-      xOffset = (tft.width() - gif.getCanvasWidth()) / 2; if (xOffset < 0) xOffset = 0;
-      yOffset = (tft.height() - gif.getCanvasHeight()) / 2; if (yOffset < 0) yOffset = 0;
-      while (gif.playFrame(true, NULL)) { }
-      gif.close();
-    }
-  } else {
-    tft.setTextColor(TFT_CHIRAL_GOLD); 
-    const char* label = "SISTEMA ONLINE";
-    if (strcmp(filepath, "/quiral.gif") == 0) label = "MODO QUIRAL";
-    else if (strcmp(filepath, "/conquista.gif") == 0) label = "MODO CONQUISTA";
-    else if (strcmp(filepath, "/dominacao.gif") == 0) label = "MODO DOMINACAO";
-    else if (strcmp(filepath, "/vitoria.gif") == 0) label = "FIM DE JOGO!";
-    tft.drawCentreString(label, 120, 150, 2);
-    delay(1200);
-  }
-  if (touchIniciado) {
-    mySpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
-    ts.begin(mySpi); ts.setRotation(0);
-  }
-}
-
-// ==========================================
-// FUNÇÕES DE LOG E SD CARD (ATUALIZADAS NTP/RTC)
-// ==========================================
-void registrarLog(const String& mensagem) {
-  if (!sdDisponivel || currentLogFile == "") return;
-  File logFile = SD.open(currentLogFile, FILE_APPEND);
-  if (logFile) {
-    String carimboTempo = "";
-    time_t now; time(&now);
-    struct tm timeinfo;
-    if (localtime_r(&now, &timeinfo) && timeinfo.tm_year > 120) { // Garante que sincronizou (Ano > 2020)
-      char buf[25];
-      snprintf(buf, sizeof(buf), "[%02d/%02d/%04d %02d:%02d:%02d] ", timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-      carimboTempo = String(buf);
-    } else {
-      long decorrido = jogoRodando ? (millis() - tempoInicioJogo) / 1000 : 0;
-      int m = decorrido / 60; int s = decorrido % 60; char buf[15];
-      snprintf(buf, sizeof(buf), "[%02d:%02d] ", m, s); carimboTempo = String(buf);
-    }
-    logFile.println(carimboTempo + mensagem); logFile.close();
-  }
-}
-
-void criarNovoArquivoLog() {
-  if (!sdDisponivel) return;
-  int num = 1; while (true) { currentLogFile = "/log_partida_" + String(num) + ".txt"; if (!SD.exists(currentLogFile)) break; num++; }
-  File logFile = SD.open(currentLogFile, FILE_WRITE);
-  if (logFile) {
-    String dataStr = "Tempo de Batalha (Nao Sincronizado)";
-    time_t now; time(&now);
-    struct tm timeinfo;
-    if (localtime_r(&now, &timeinfo) && timeinfo.tm_year > 120) {
-      char buf[32];
-      snprintf(buf, sizeof(buf), "%02d/%02d/%04d %02d:%02d:%02d", timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-      dataStr = String(buf);
-    }
-    String strModo = (modoSelecionado == MODE_QUIRAL) ? "QUIRAL" : (modoSelecionado == MODE_CONQUISTA ? "CONQUISTA" : (modoSelecionado == MODE_DOMINACAO ? "DOMINACAO" : "DEPURACAO"));
-    logFile.println("=== RELATORIO DE MISSAO ==="); logFile.println("Data: " + dataStr); logFile.println("Modo: " + strModo); logFile.println("-------------------------"); logFile.close();
-  }
-}
-
-// ==========================================
-// TAREFA FREERTOS: FIREBASE (CORE 0)
-// ==========================================
-void TaskWiFiUpload(void *pvParameters) {
-  while(true) {
-    if (WiFi.status() == WL_CONNECTED && !wifiSkipped) {
-      HTTPClient http;
-      unsigned long agora = millis();
-      unsigned long tr = (duracaoJogo > (agora - tempoInicioJogo)) ? (duracaoJogo - (agora - tempoInicioJogo)) : 0;
-      if (!jogoRodando) tr = duracaoJogo;
-      int min = tr / 60000; int sec = (tr % 60000) / 1000;
-      char tempoStr[6]; sprintf(tempoStr, "%02d:%02d", min, sec);
-      String status = jogoRodando ? "ON" : "OFF";
-      String strModo = (modoSelecionado == MODE_QUIRAL) ? "QUIRAL" : (modoSelecionado == MODE_CONQUISTA ? "CONQUISTA" : "DOMINACAO");
-
-      String jsonPayload = "{";
-      jsonPayload += "\"az\":" + String(pontuacaoAzul) + ",";
-      jsonPayload += "\"am\":" + String(pontuacaoAmarelo) + ",";
-      jsonPayload += "\"tp\":\"" + String(tempoStr) + "\",";
-      jsonPayload += "\"st\":\"" + status + "\",";
-      jsonPayload += "\"md\":\"" + strModo + "\",";
-      jsonPayload += "\"nos\":[";
-      for(int i=1; i<=10; i++) {
-        jsonPayload += "{";
-        jsonPayload += "\"online\":" + String(nodes[i].online ? "true" : "false") + ",";
-        jsonPayload += "\"ativo\":" + String(nodes[i].ativo ? "true" : "false") + ",";
-        jsonPayload += "\"owner\":" + String(nodes[i].owner);
-        jsonPayload += "}";
-        if(i < 10) jsonPayload += ",";
-      }
-      jsonPayload += "]}";
-
-      http.begin(FIREBASE_URL);
-      http.addHeader("Content-Type", "application/json");
-      http.PUT(jsonPayload);
-      http.end();
-    }
-    vTaskDelay(5000 / portTICK_PERIOD_MS); 
-  }
-}
-
-// ==========================================
-// FUNÇÕES WI-FI, NTP E CARTÃO SD (AUTOCONNECT)
-// ==========================================
-void salvarWiFiSD(String ssid_str, String pass_str) {
-  if (!sdDisponivel) return;
-  File f = SD.open("/wifi.txt", FILE_WRITE);
-  if (f) {
-    f.println(ssid_str);
-    f.println(pass_str);
-    f.close();
-  }
-}
-
-void desenharMenuModos(); // Pre-declaração para uso na tela de Wi-Fi
-
-bool carregarWiFiSD() {
-  if (!sdDisponivel || !SD.exists("/wifi.txt")) return false;
-  
-  File f = SD.open("/wifi.txt", FILE_READ);
-  if (!f) return false;
-  
-  String s_ssid = f.readStringUntil('\n');
-  String s_pass = f.readStringUntil('\n');
-  f.close();
-  
-  s_ssid.trim(); 
-  s_pass.trim();
-
-  if (s_ssid.length() == 0) return false;
-
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_CHIRAL_GOLD);
-  tft.drawCentreString("REDE SALVA ENCONTRADA", 120, 120, 2);
-  tft.setTextColor(TFT_WHITE);
-  tft.drawCentreString(s_ssid, 120, 150, 1);
-  tft.drawCentreString("Conectando...", 120, 170, 1);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(s_ssid.c_str(), s_pass.c_str());
-  
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 8000) {
-    delay(500);
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_GREEN);
-    tft.drawCentreString("CONECTADO!", 120, 120, 2);
-    tft.setTextColor(TFT_WHITE);
-    tft.drawCentreString("Sincronizando hora...", 120, 160, 1);
-    
-    configTime(-10800, 0, "pool.ntp.org", "time.nist.gov"); 
-    
-    startAttempt = millis();
-    struct tm timeinfo;
-    bool synced = false;
-    
-    while (millis() - startAttempt < 5000) {
-      if (getLocalTime(&timeinfo) && timeinfo.tm_year > 120) { 
-        synced = true;
-        if (rtcDisponivel) {
-          rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
+        function salvarFila() { localStorage.setItem('quiral_fila', JSON.stringify(filaEscritas)); atualizarIndicadorFila(); }
+        function atualizarIndicadorFila() {
+            const el = document.getElementById('fila-indicador');
+            if (!el) return;
+            if (filaEscritas.length > 0) { el.textContent = `⏳ ${filaEscritas.length} alteração(ões) aguardando conexão`; el.classList.remove('hidden'); } 
+            else { el.classList.add('hidden'); }
         }
-        break;
-      }
-      delay(500);
-    }
-    
-    if(synced) {
-        tft.setTextColor(TFT_BRIDGES_BLUE);
-        tft.drawCentreString("Hora Sincronizada!", 120, 190, 1);
-    } else {
-        tft.setTextColor(TFT_DANGER_RED);
-        tft.drawCentreString("Falha no NTP.", 120, 190, 1);
-    }
-    delay(1500);
-    return true;
-  } else {
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_DANGER_RED);
-    tft.drawCentreString("REDE INDISPONIVEL", 120, 150, 2);
-    delay(1500);
-    return false;
-  }
-}
 
-void escanearWiFi() {
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_CHIRAL_GOLD);
-  tft.drawCentreString("BUSCANDO REDES...", 120, 150, 2);
-  
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(100);
-  int n = WiFi.scanNetworks();
-  networksFound = min(n, 6); // Limita às 6 mais fortes
-  for (int i = 0; i < networksFound; ++i) {
-    ssids[i] = WiFi.SSID(i);
-    hasAuth[i] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
-  }
-}
-
-void desenharTelaWiFi() {
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_CHIRAL_GOLD);
-  tft.drawCentreString("SELECIONE A REDE", 120, 10, 2);
-  
-  for (int i = 0; i < networksFound; i++) {
-    int y = 40 + (i * 35);
-    tft.drawRect(10, y, 220, 30, TFT_DARKGREY);
-    tft.setTextColor(TFT_WHITE);
-    tft.drawString(ssids[i].substring(0, 18), 15, y + 8, 2);
-    if (hasAuth[i]) {
-      tft.setTextColor(TFT_DANGER_RED);
-      tft.drawRightString("*", 225, y + 8, 2);
-    }
-  }
-  
-  // Botão PULAR (Para uso Offline no mato)
-  tft.fillRoundRect(20, 260, 200, 40, 6, TFT_DARKGREY);
-  tft.setTextColor(TFT_WHITE);
-  tft.drawCentreString("PULAR (OFFLINE)", 120, 273, 2);
-}
-
-void desenharTelaTeclado(bool apenasSenha = false) {
-  if (!apenasSenha) {
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_CHIRAL_GOLD);
-    tft.drawCentreString(ssids[selectedSSIDIndex], 120, 5, 2);
-    
-    // Desenha as teclas num formato 5x8
-    for (int r = 0; r < 8; r++) {
-      for (int c = 0; c < 5; c++) {
-        int x = c * 48;
-        int y = 60 + (r * 32);
-        tft.drawRect(x, y, 48, 32, TFT_DARKGREY);
-        char key = kb_shifted ? kbd_up[r][c] : kbd_low[r][c];
-        tft.setTextColor(TFT_WHITE);
-        String kStr = "";
-        if(key == '^') kStr = "SHF";
-        else if(key == '<') kStr = "DEL";
-        else if(key == '#') kStr = "OK";
-        else kStr = String(key);
-        tft.drawCentreString(kStr, x + 24, y + 8, 2);
-      }
-    }
-  }
-  
-  // Desenha/Atualiza apenas o campo de senha
-  tft.fillRect(10, 30, 220, 25, TFT_BLACK);
-  tft.drawRect(10, 30, 220, 25, TFT_WHITE);
-  tft.setTextColor(TFT_WHITE);
-  
-  String displayPass = inputPassword;
-  if(displayPass.length() > 18) {
-      displayPass = "..." + displayPass.substring(displayPass.length() - 15);
-  }
-  tft.drawString(displayPass, 15, 35, 2);
-}
-
-void conectarWiFi(String ssid, String pass) {
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_WHITE);
-  tft.drawCentreString("CONECTANDO...", 120, 140, 2);
-  tft.setTextColor(TFT_CHIRAL_GOLD);
-  tft.drawCentreString(ssid, 120, 170, 1);
-  
-  WiFi.begin(ssid.c_str(), pass.c_str());
-  
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
-    delay(500);
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_GREEN);
-    tft.drawCentreString("CONECTADO!", 120, 120, 2);
-    tft.setTextColor(TFT_WHITE);
-    tft.drawCentreString("Sincronizando hora...", 120, 160, 1);
-    
-    // Contata o NTP (Servidor de Tempo do Brasil - GMT-3)
-    configTime(-10800, 0, "pool.ntp.org", "time.nist.gov"); 
-    
-    startAttempt = millis();
-    struct tm timeinfo;
-    bool synced = false;
-    
-    // Aguarda até 5 segundos pela resposta do Relógio Atômico
-    while (millis() - startAttempt < 5000) {
-      if (getLocalTime(&timeinfo) && timeinfo.tm_year > 120) { 
-        synced = true;
-        // Se a CYD tiver o chip físico (RTC) soldado, atualiza a bateria dele para uso offline futuro!
-        if (rtcDisponivel) {
-          rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
-        }
-        break;
-      }
-      delay(500);
-    }
-    
-    if(synced) {
-        tft.setTextColor(TFT_BRIDGES_BLUE);
-        tft.drawCentreString("Hora Sincronizada!", 120, 190, 1);
-    } else {
-        tft.setTextColor(TFT_DANGER_RED);
-        tft.drawCentreString("Falha no NTP.", 120, 190, 1);
-    }
-    
-    // GRAVA AS CREDENCIAIS NO CARTÃO SD PARA A PRÓXIMA VEZ
-    salvarWiFiSD(ssid, pass);
-    
-    delay(1500);
-    telaAtual = 1;
-    desenharMenuModos();
-  } else {
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextColor(TFT_DANGER_RED);
-    tft.drawCentreString("FALHA NA CONEXAO", 120, 150, 2);
-    delay(2000);
-    telaAtual = 10;
-    desenharTelaWiFi();
-  }
-}
-
-// ==========================================
-// COMUNICAÇÃO LORA (TRITURADOR DE BUFFER)
-// ==========================================
-void sendPacket(QuiralPacket& pkt) {
-  pkt.fromId = QR_CENTRAL_ID; pkt.msgId = ++centralMsgCounter;
-  preparePacket(pkt);
-  addMessageToHistory(pkt.msgId);
-  LoRaSerial.write((const uint8_t*)&pkt, sizeof(pkt)); LoRaSerial.flush();
-}
-
-bool readPacket(QuiralPacket& pkt) {
-  const int pktSize = sizeof(QuiralPacket);
-  while (LoRaSerial.available() >= pktSize) {
-    if (LoRaSerial.peek() != 0x52) { 
-        LoRaSerial.read(); // Triturador Agressivo: Mata lixo 1 byte por vez
-        continue; 
-    }
-    uint8_t buffer[sizeof(QuiralPacket)]; 
-    LoRaSerial.readBytes(buffer, pktSize); 
-    memcpy(&pkt, buffer, pktSize);
-    
-    if (packetValid(pkt)) return true;
-  }
-  return false;
-}
-
-void resetNodesForNewGame() {
-  pontuacaoAzul = 0;
-  pontuacaoAmarelo = 0;
-  for (int i = 1; i <= NODE_COUNT; i++) { nodes[i].owner = 0; nodes[i].ativo = false; nodes[i].tempoRestante = 0; }
-}
-
-void enviarComandoInicio() {
-  QuiralPacket pkt = {}; pkt.type = PKT_START_GAME; pkt.toId = QR_BROADCAST_ID; pkt.mode = modoSelecionado; pkt.active = true;
-  pkt.gameRemainingSec = duracaoJogo / 1000; 
-  if (modoSelecionado == MODE_QUIRAL) {
-      if (cooldownAleatorio) { pkt.confMinSec = respawnAleatorioMin * 60; pkt.confMaxSec = respawnAleatorioMax * 60; } 
-      else { pkt.confMinSec = respawnFixoMinutos * 60; pkt.confMaxSec = respawnFixoMinutos * 60; }
-  } else {
-      pkt.confMinSec = 60; pkt.confMaxSec = 300; 
-  }
-  sendPacket(pkt);
-}
-
-void enviarComandoParada() {
-  QuiralPacket pkt = {}; pkt.type = PKT_STOP_GAME; pkt.toId = QR_BROADCAST_ID; pkt.mode = modoSelecionado; pkt.active = false; sendPacket(pkt);
-}
-
-void triggerOdisseu(const char* msg) { odisseuTriggered = true; odisseuMessage = msg; odisseuSince = millis(); }
-void enviarOdisseuParaNos(int id, int equipe) { QuiralPacket pkt = {}; pkt.type = PKT_ODISSEU; pkt.toId = id; pkt.team = equipe; pkt.active = true; sendPacket(pkt); }
-
-// ==========================================
-// DESENHO DE UI (TFT)
-// ==========================================
-void drawBar(int x, int y, int w, int h, float pct, uint16_t color) {
-  tft.fillRect(x, y, w, h, TFT_DARKGREY); int filled = (int)(w * constrain(pct, 0.0f, 1.0f));
-  if (filled > 0) tft.fillRect(x, y, filled, h, color);
-  tft.drawRect(x, y, w, h, TFT_WHITE);
-}
-
-void desenharMenuModos() {
-  tft.fillScreen(TFT_BLACK); tft.setTextColor(TFT_WHITE); tft.drawCentreString("SELECIONE O MODO", 120, 5, 2); tft.drawFastHLine(10, 22, 220, TFT_CHIRAL_GOLD);
-  
-  tft.fillRoundRect(20, 30, 200, 48, 6, TFT_BRIDGES_BLUE); tft.drawRoundRect(20, 30, 200, 48, 6, TFT_WHITE); tft.drawCentreString("MODO QUIRAL", 120, 46, 2);
-  tft.fillRoundRect(20, 88, 200, 48, 6, TFT_DARKGREEN); tft.drawRoundRect(20, 88, 200, 48, 6, TFT_WHITE); tft.drawCentreString("MODO CONQUISTA", 120, 104, 2);
-  tft.fillRoundRect(20, 146, 200, 48, 6, TFT_ORANGE); tft.drawRoundRect(20, 146, 200, 48, 6, TFT_WHITE); tft.drawCentreString("MODO DOMINACAO", 120, 162, 2);
-  tft.fillRoundRect(20, 204, 200, 48, 6, TFT_PINK); tft.drawRoundRect(20, 204, 200, 48, 6, TFT_WHITE); tft.drawCentreString("RADAR DEPURACAO", 120, 220, 2);
-}
-
-void desenharTelaTempo() {
-  tft.fillScreen(TFT_BLACK); tft.fillRoundRect(5, 5, 55, 25, 4, TFT_DARKGREY); tft.setTextColor(TFT_WHITE); tft.drawCentreString("< VOL", 32, 10, 1);
-  tft.setTextColor(TFT_CHIRAL_GOLD); tft.drawCentreString("TEMPO DE JOGO", 120, 50, 2);
-  tft.setTextColor(TFT_WHITE); tft.drawCentreString("HORAS", 65, 80, 1); tft.drawCentreString("MINUTOS", 175, 80, 1);
-  tft.fillRect(40, 95, 50, 40, TFT_DARKGREY); tft.drawRect(40, 95, 50, 40, TFT_WHITE); tft.fillTriangle(65, 100, 48, 130, 82, 130, TFT_WHITE);   
-  tft.fillRect(150, 95, 50, 40, TFT_DARKGREY); tft.drawRect(150, 95, 50, 40, TFT_WHITE); tft.fillTriangle(175, 100, 158, 130, 192, 130, TFT_WHITE);
-  tft.fillRect(40, 200, 50, 40, TFT_DARKGREY); tft.drawRect(40, 200, 50, 40, TFT_WHITE); tft.fillTriangle(65, 235, 48, 205, 82, 205, TFT_WHITE);  
-  tft.fillRect(150, 200, 50, 40, TFT_DARKGREY); tft.drawRect(150, 200, 50, 40, TFT_WHITE); tft.fillTriangle(175, 235, 158, 205, 192, 205, TFT_WHITE);
-  
-  tft.fillRoundRect(55, 265, 130, 40, 6, TFT_BRIDGES_BLUE); tft.drawRoundRect(55, 265, 130, 40, 6, TFT_WHITE); tft.drawCentreString("AVANCAR >", 120, 278, 2);
-}
-
-void desenharTelaTipoCooldown() {
-  tft.fillScreen(TFT_BLACK); tft.fillRoundRect(5, 5, 55, 25, 4, TFT_DARKGREY); tft.setTextColor(TFT_WHITE); tft.drawCentreString("< VOL", 32, 10, 1);
-  tft.setTextColor(TFT_CHIRAL_GOLD); tft.drawCentreString("TIPO DE COOLDOWN", 120, 45, 2);
-  
-  tft.fillRoundRect(20, 95, 200, 60, 6, TFT_BRIDGES_BLUE); tft.drawRoundRect(20, 95, 200, 60, 6, TFT_WHITE); 
-  tft.setTextColor(TFT_WHITE); tft.drawCentreString("ALEATORIO", 120, 116, 2);
-  
-  tft.fillRoundRect(20, 185, 200, 60, 6, TFT_DARKGREEN); tft.drawRoundRect(20, 185, 200, 60, 6, TFT_WHITE); 
-  tft.setTextColor(TFT_WHITE); tft.drawCentreString("FIXO", 120, 206, 2);
-}
-
-void desenharTelaAjusteCooldown() {
-  tft.fillScreen(TFT_BLACK); tft.fillRoundRect(5, 5, 55, 25, 4, TFT_DARKGREY); tft.setTextColor(TFT_WHITE); tft.drawCentreString("< VOL", 32, 10, 1);
-  
-  if (cooldownAleatorio) {
-      tft.setTextColor(TFT_CHIRAL_GOLD); tft.drawCentreString("COOLDOWN ALEATORIO", 120, 50, 2);
-      tft.setTextColor(TFT_WHITE); tft.drawCentreString("MIN (m)", 65, 80, 1); tft.drawCentreString("MAX (m)", 175, 80, 1);
-      tft.fillRect(40, 95, 50, 40, TFT_DARKGREY); tft.drawRect(40, 95, 50, 40, TFT_WHITE); tft.fillTriangle(65, 100, 48, 130, 82, 130, TFT_WHITE);   
-      tft.fillRect(150, 95, 50, 40, TFT_DARKGREY); tft.drawRect(150, 95, 50, 40, TFT_WHITE); tft.fillTriangle(175, 100, 158, 130, 192, 130, TFT_WHITE);
-      tft.fillRect(40, 200, 50, 40, TFT_DARKGREY); tft.drawRect(40, 200, 50, 40, TFT_WHITE); tft.fillTriangle(65, 235, 48, 205, 82, 205, TFT_WHITE);  
-      tft.fillRect(150, 200, 50, 40, TFT_DARKGREY); tft.drawRect(150, 200, 50, 40, TFT_WHITE); tft.fillTriangle(175, 235, 158, 205, 192, 205, TFT_WHITE);
-  } else {
-      tft.setTextColor(TFT_CHIRAL_GOLD); tft.drawCentreString("COOLDOWN FIXO", 120, 50, 2);
-      tft.setTextColor(TFT_WHITE); tft.drawCentreString("MINUTOS", 120, 80, 1);
-      tft.fillRect(95, 95, 50, 40, TFT_DARKGREY); tft.drawRect(95, 95, 50, 40, TFT_WHITE); tft.fillTriangle(120, 100, 103, 130, 137, 130, TFT_WHITE);
-      tft.fillRect(95, 200, 50, 40, TFT_DARKGREY); tft.drawRect(95, 200, 50, 40, TFT_WHITE); tft.fillTriangle(120, 235, 103, 205, 137, 205, TFT_WHITE);
-  }
-  tft.fillRoundRect(55, 265, 130, 40, 6, TFT_BRIDGES_BLUE); tft.drawRoundRect(55, 265, 130, 40, 6, TFT_WHITE); tft.drawCentreString("CONFIRMAR", 120, 278, 2);
-}
-
-void desenharInterfaceLobby() {
-  tft.fillScreen(TFT_BLACK); tft.setTextColor(TFT_CHIRAL_GOLD); 
-  String title = (modoSelecionado == MODE_QUIRAL) ? "QUIRAL" : (modoSelecionado == MODE_CONQUISTA ? "CONQUISTA" : "DOMINACAO");
-  tft.drawCentreString("MODO " + title, 120, 5, 2); tft.drawFastHLine(0, 22, 240, TFT_DARKGREY);
-  if (!jogoRodando) { tft.fillRoundRect(5, 25, 55, 25, 4, TFT_DARKGREY); tft.setTextColor(TFT_WHITE); tft.drawCentreString("< VOL", 32, 30, 1); }
-  
-  tft.fillRoundRect(70, 25, 80, 25, 4, TFT_BRIDGES_BLUE); tft.setTextColor(TFT_WHITE); tft.drawCentreString(jogoRodando ? "EM JOGO" : "INICIAR", 110, 30, 1);
-  tft.drawRoundRect(160, 25, 75, 25, 4, TFT_DANGER_RED); tft.setTextColor(TFT_DANGER_RED); tft.drawCentreString("PARAR", 197, 30, 1);
-  
-  tft.drawFastHLine(0, 56, 240, TFT_DARKGREY); tft.setTextColor(TFT_BRIDGES_BLUE); tft.drawString("AZUL", 10, 60, 1); tft.setTextColor(TFT_CHIRAL_GOLD); tft.drawString("AMARELO", 160, 60, 1);
-  tft.drawFastHLine(0, 74, 240, TFT_DARKGREY);
-}
-
-void desenharGameOver() {
-  tft.fillScreen(TFT_BLACK); reproduzirGif("/vitoria.gif"); tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_CHIRAL_GOLD); tft.drawCentreString("FIM DE JOGO", 120, 20, 4); tft.drawFastHLine(10, 60, 220, TFT_CHIRAL_GOLD);
-  tft.setTextColor(TFT_BRIDGES_BLUE); tft.drawCentreString("AZUL", 60, 80, 2); tft.drawCentreString(String(pontuacaoAzul), 60, 110, 4);
-  tft.setTextColor(TFT_CHIRAL_GOLD); tft.drawCentreString("AMARELO", 175, 80, 2); tft.drawCentreString(String(pontuacaoAmarelo), 175, 110, 4);
-  tft.drawFastHLine(10, 160, 220, TFT_DARKGREY);
-  uint16_t winColor; String winMsg;
-  if (pontuacaoAzul > pontuacaoAmarelo) { winColor = TFT_BRIDGES_BLUE; winMsg = "VITORIA AZUL!"; } else if (pontuacaoAmarelo > pontuacaoAzul) { winColor = TFT_CHIRAL_GOLD; winMsg = "VITORIA AMARELO!"; } else { winColor = TFT_WHITE; winMsg = "EMPATE!"; }
-  tft.setTextColor(winColor); tft.drawCentreString(winMsg, 120, 180, 2);
-  tft.fillRoundRect(60, 260, 120, 40, 6, TFT_DARKGREY); tft.setTextColor(TFT_WHITE); tft.drawCentreString("MENU", 120, 273, 2);
-}
-
-void desenharTelaDepuracao() {
-  tft.fillScreen(TFT_BLACK); tft.setTextColor(TFT_PINK); tft.drawCentreString("RADAR DE SINAL LORA", 120, 10, 2);
-  tft.setTextColor(TFT_WHITE); tft.drawCentreString("SINAL EM TEMPO REAL", 120, 30, 1); tft.drawFastHLine(0, 45, 240, TFT_DARKGREY);
-  tft.fillRoundRect(60, 260, 120, 40, 6, TFT_DARKGREY); tft.setTextColor(TFT_WHITE); tft.drawCentreString("VOLTAR", 120, 273, 2);
-}
-
-void atualizarDisplay() {
-  static unsigned long lastDraw = 0; if (millis() - lastDraw < 500) return; lastDraw = millis();
-  unsigned long agora = millis();
-  
-  if (jogoRodando && modoSelecionado == MODE_DOMINACAO) {
-    static unsigned long lastDominacaoTick = 0;
-    if (agora - lastDominacaoTick >= 60000UL) {
-      int nosAzul = 0; int nosAmarelo = 0;
-      for (int i = 1; i <= NODE_COUNT; i++) { if (nodes[i].online) { if (nodes[i].owner == TEAM_BLUE) nosAzul++; else if (nodes[i].owner == TEAM_YELLOW) nosAmarelo++; } }
-      pontuacaoAzul += nosAzul; pontuacaoAmarelo += nosAmarelo; lastDominacaoTick = agora;
-      registrarLog("DOMINACAO -> AZUL +" + String(nosAzul) + " pts | AMARELA +" + String(nosAmarelo) + " pts");
-    }
-  }
-
-  // CORREÇÃO: Removido o 'telaAtual == 4' do bloqueio para permitir o desenho dos números de Cooldown
-  if (telaAtual == 10 || telaAtual == 11) return; 
-
-  if (telaAtual == 9) {
-    int startY = 55;
-    for (int i = 1; i <= NODE_COUNT; i++) {
-      int y = startY + ((i - 1) * 20); tft.fillRect(10, y, 220, 18, TFT_BLACK); tft.setTextColor(TFT_WHITE);
-      tft.drawString((i < 10 ? "NO 0" : "NO ") + String(i) + ":", 45, y, 2);
-      if (!nodes[i].online || nodes[i].lastSeen == 0) { tft.setTextColor(TFT_DANGER_RED); tft.drawString("OFFLINE", 110, y, 2); } 
-      else {
-        unsigned long ping = agora - nodes[i].lastSeen; uint16_t corPing = TFT_GREEN;
-        if (ping > 6000) corPing = TFT_DANGER_RED; else if (ping > 3000) corPing = TFT_CHIRAL_GOLD;
-        tft.setTextColor(corPing); tft.drawString(String(ping) + " ms", 110, y, 2);
-      }
-    }
-    return; 
-  }
-
-  if (telaAtual == 2) {
-    char buf[6]; snprintf(buf, sizeof(buf), "%02d:%02d", horasConfiguradas, minutosConfigurados);
-    tft.fillRect(60, 145, 120, 35, TFT_BLACK); tft.setTextColor(TFT_WHITE); tft.drawCentreString(buf, 120, 150, 4); return;
-  }
-  if (telaAtual == 4) {
-    if (cooldownAleatorio) {
-        char minB[6]; char maxB[6]; snprintf(minB, sizeof(minB), "%02d", respawnAleatorioMin); snprintf(maxB, sizeof(maxB), "%02d", respawnAleatorioMax);
-        tft.fillRect(40, 145, 50, 35, TFT_BLACK); tft.fillRect(150, 145, 50, 35, TFT_BLACK);
-        tft.setTextColor(TFT_WHITE); tft.drawCentreString(minB, 65, 150, 4); tft.drawCentreString(maxB, 175, 150, 4);
-    } else {
-        char fixB[6]; snprintf(fixB, sizeof(fixB), "%02d", respawnFixoMinutos);
-        tft.fillRect(95, 145, 50, 35, TFT_BLACK); tft.setTextColor(TFT_WHITE); tft.drawCentreString(fixB, 120, 150, 4);
-    }
-    return;
-  }
-
-  if (telaAtual != 5) return; 
-
-  String timeStr = "";
-  if (jogoRodando) {
-    long tempoJogo = ((agora - tempoInicioJogo) < duracaoJogo) ? (duracaoJogo - (agora - tempoInicioJogo)) / 1000 : 0;
-    int h = tempoJogo / 3600; int m = (tempoJogo % 3600) / 60; int s = tempoJogo % 60;
-    timeStr = (h>0?String(h)+":":"") + (m<10?"0":"") + String(m) + ":" + (s<10?"0":"") + String(s);
-  } else { 
-    timeStr = (horasConfiguradas<10?"0":"") + String(horasConfiguradas) + ":" + (minutosConfigurados<10?"0":"") + String(minutosConfigurados) + ":00"; 
-  }
-  
-  tft.fillRect(40, 95, 160, 30, TFT_BLACK); 
-  tft.setTextColor(TFT_WHITE); 
-  tft.drawCentreString(timeStr, 120, 95, 4); 
-
-  // Pontuação Live (Modo Conquista/Dominação)
-  if (jogoRodando && (modoSelecionado == MODE_CONQUISTA || modoSelecionado == MODE_DOMINACAO)) {
-    int az = 0, am = 0;
-    for(int i=1; i<=NODE_COUNT; i++) { if (nodes[i].online) { if (nodes[i].owner == TEAM_BLUE) az++; else if (nodes[i].owner == TEAM_YELLOW) am++; } }
-    pontuacaoAzul = az; pontuacaoAmarelo = am;
-  }
-  
-  // Aumentamos a largura da caixa preta (de 90 para 110) e mudamos o tamanho da fonte de 4 para 2 se o valor passar de 999
-  tft.fillRect(5, 125, 110, 30, TFT_BLACK); 
-  tft.setTextColor(TFT_BRIDGES_BLUE); 
-  tft.drawCentreString(String(pontuacaoAzul), 60, 125, (pontuacaoAzul > 999) ? 2 : 4); 
-  
-  tft.fillRect(125, 125, 110, 30, TFT_BLACK); 
-  tft.setTextColor(TFT_CHIRAL_GOLD); 
-  tft.drawCentreString(String(pontuacaoAmarelo), 180, 125, (pontuacaoAmarelo > 999) ? 2 : 4); 
-
-  if (modoSelecionado == MODE_CONQUISTA || modoSelecionado == MODE_DOMINACAO) {
-    int totalOnline = 0; int cntBlue = 0; int cntYellow = 0;
-    for (int i = 1; i <= NODE_COUNT; i++) {
-      if (!nodes[i].online) continue; totalOnline++;
-      if (nodes[i].owner == 1) cntBlue++; else if (nodes[i].owner == 2) cntYellow++;
-    }
-    drawBar(5, 168, 110, 10, totalOnline ? (float)cntBlue / totalOnline : 0, TFT_BRIDGES_BLUE);
-    drawBar(125, 168, 110, 10, totalOnline ? (float)cntYellow / totalOnline : 0, TFT_CHIRAL_GOLD);
-  }
-
-  static bool lastOdisseu = false;
-  if (odisseuTriggered) {
-    tft.fillRect(0, 75, 240, 18, TFT_PURPLE); tft.setTextColor(TFT_WHITE); tft.drawCentreString(odisseuMessage, 120, 78, 1); lastOdisseu = true;
-  } else if (lastOdisseu) { tft.fillRect(0, 75, 240, 18, TFT_BLACK); lastOdisseu = false; }
-
-  const int startX = 5, startY = 185, boxW = 110, boxH = 26, gapX = 8, gapY = 2;
-  for (int i = 1; i <= NODE_COUNT; i++) {
-    int row = (i - 1) / 2; int col = (i - 1) % 2; int x = startX + col * (boxW + gapX); int y = startY + row * (boxH + gapY); int cx = x + boxW / 2;
-    uint16_t color = TFT_DARKGREY;
-    if (nodes[i].online) {
-      if (modoSelecionado == MODE_QUIRAL) color = nodes[i].ativo ? TFT_BRIDGES_BLUE : TFT_DANGER_RED;
-      else color = (nodes[i].owner == TEAM_BLUE) ? TFT_BRIDGES_BLUE : (nodes[i].owner == TEAM_YELLOW ? TFT_CHIRAL_GOLD : TFT_WHITE);
-    }
-    tft.fillRect(x, y, boxW, boxH, TFT_BLACK); tft.drawRect(x, y, boxW, boxH, color); tft.setTextColor(color); tft.drawCentreString((i < 10) ? "N0" + String(i) : "N" + String(i), cx, y + 2, 1);
-    if (!nodes[i].online) { tft.setTextColor(TFT_DARKGREY); tft.drawCentreString("OFF", cx, y + 13, 1); } 
-    else {
-       if (modoSelecionado == MODE_QUIRAL) {
-          if (nodes[i].ativo) { tft.setTextColor(TFT_BRIDGES_BLUE); tft.drawCentreString("PRONTO", cx, y + 13, 1); } 
-          else { tft.setTextColor(TFT_DANGER_RED); tft.drawCentreString(String(nodes[i].tempoRestante) + "s", cx, y + 13, 1); }
-       } else {
-          const char* label = (nodes[i].owner == TEAM_BLUE) ? "AZUL" : (nodes[i].owner == TEAM_YELLOW) ? "AMARELO" : "NEUTRO";
-          tft.setTextColor(color); tft.drawCentreString(label, cx, y + 13, 1); 
-       }
-    }
-  }
-}
-
-// ==========================================
-// CONTROLO TOUCH
-// ==========================================
-void lerTouch() {
-  if (ts.touched()) { 
-    TS_Point p = ts.getPoint();
-    int t_x = map(p.x, 300, 3800, 0, 240); int t_y = map(p.y, 300, 3800, 0, 320);
-    unsigned long agora = millis();
-
-    if (telaAtual == 10 && agora - lastTouchTime > 500) {
-      for (int i = 0; i < networksFound; i++) {
-        int y = 40 + (i * 35);
-        if (t_x > 10 && t_x < 230 && t_y > y && t_y < y + 30) {
-          selectedSSIDIndex = i; inputPassword = ""; kb_shifted = false;
-          if (hasAuth[i]) { telaAtual = 11; desenharTelaTeclado(); } else { conectarWiFi(ssids[i], ""); }
-          lastTouchTime = agora; return;
-        }
-      }
-      if (t_y > 260 && t_y < 300 && t_x > 20 && t_x < 220) { wifiSkipped = true; telaAtual = 1; desenharMenuModos(); lastTouchTime = agora; return; }
-    }
-
-    if (telaAtual == 11 && agora - lastTouchTime > 200) {
-      if (t_y > 60 && t_y < 316) {
-        int r = (t_y - 60) / 32; int c = t_x / 48;
-        if (r >= 0 && r < 8 && c >= 0 && c < 5) {
-          char key = kb_shifted ? kbd_up[r][c] : kbd_low[r][c];
-          if (key == '<') { if (inputPassword.length() > 0) { inputPassword.remove(inputPassword.length() - 1); desenharTelaTeclado(true); } } 
-          else if (key == '^') { kb_shifted = !kb_shifted; desenharTelaTeclado(); } 
-          else if (key == '#') { conectarWiFi(ssids[selectedSSIDIndex], inputPassword); } 
-          else { if (inputPassword.length() < 30) { inputPassword += key; desenharTelaTeclado(true); } }
-          lastTouchTime = agora; return;
-        }
-      }
-    }
-
-    if (telaAtual == 1 && agora - lastTouchTime > 500) {
-      if (t_x > 20 && t_x < 220) {
-        if (t_y > 30 && t_y < 78) { resetNodesForNewGame(); modoSelecionado = MODE_QUIRAL; telaAtual = 2; reproduzirGif("/quiral.gif"); desenharTelaTempo(); lastTouchTime = agora; return;}
-        else if (t_y > 88 && t_y < 136) { resetNodesForNewGame(); modoSelecionado = MODE_CONQUISTA; telaAtual = 2; reproduzirGif("/conquista.gif"); desenharTelaTempo(); lastTouchTime = agora; return;}
-        else if (t_y > 146 && t_y < 194) { resetNodesForNewGame(); modoSelecionado = MODE_DOMINACAO; telaAtual = 2; reproduzirGif("/dominacao.gif"); desenharTelaTempo(); lastTouchTime = agora; return;}
-        else if (t_y > 204 && t_y < 252) { resetNodesForNewGame(); modoSelecionado = MODE_DEPURACAO; telaAtual = 9; QuiralPacket pkt = {}; pkt.type = PKT_DEPURACAO; pkt.toId = QR_BROADCAST_ID; pkt.mode = MODE_DEPURACAO; pkt.active = true; sendPacket(pkt); desenharTelaDepuracao(); lastTouchTime = agora; return;}
-      }
-    }
-    
-    if (telaAtual == 2 && agora - lastTouchTime > 300) {
-      if (t_y > 5 && t_y < 30 && t_x > 5 && t_x < 60) { telaAtual = 1; desenharMenuModos(); lastTouchTime = agora; return; }
-      if (t_y > 95 && t_y < 135) { 
-        if (t_x > 40 && t_x < 90) { if (horasConfiguradas < 99) horasConfiguradas++; lastTouchTime = agora; return; } 
-        else if (t_x > 150 && t_x < 200) { if (minutosConfigurados < 59) minutosConfigurados++; else { minutosConfigurados = 0; if(horasConfiguradas < 99) horasConfiguradas++; } lastTouchTime = agora; return; }
-      } else if (t_y > 200 && t_y < 240) { 
-        if (t_x > 40 && t_x < 90) { if (horasConfiguradas > 0) horasConfiguradas--; lastTouchTime = agora; return; } 
-        else if (t_x > 150 && t_x < 200) { if (minutosConfigurados > 0) minutosConfigurados--; else if (horasConfiguradas > 0) { minutosConfigurados = 59; horasConfiguradas--; } lastTouchTime = agora; return; }
-      }
-      if (t_y > 265 && t_y < 305 && t_x > 55 && t_x < 185) { 
-          if(modoSelecionado == MODE_QUIRAL) { telaAtual = 3; desenharTelaTipoCooldown(); } else { telaAtual = 5; desenharInterfaceLobby(); }
-          lastTouchTime = agora; return; 
-      }
-    }
-
-    if (telaAtual == 3 && agora - lastTouchTime > 500) {
-        if (t_y > 5 && t_y < 30 && t_x > 5 && t_x < 60) { telaAtual = 2; desenharTelaTempo(); lastTouchTime = agora; return; }
-        if (t_x > 20 && t_x < 220) {
-            if (t_y > 95 && t_y < 155) { cooldownAleatorio = true; telaAtual = 4; desenharTelaAjusteCooldown(); lastTouchTime = agora; return; }
-            if (t_y > 185 && t_y < 245) { cooldownAleatorio = false; telaAtual = 4; desenharTelaAjusteCooldown(); lastTouchTime = agora; return; }
-        }
-    }
-
-    if (telaAtual == 4 && agora - lastTouchTime > 300) {
-        if (t_y > 5 && t_y < 30 && t_x > 5 && t_x < 60) { telaAtual = 3; desenharTelaTipoCooldown(); lastTouchTime = agora; return; }
-        if (cooldownAleatorio) {
-            if (t_y > 95 && t_y < 135) {
-                if (t_x > 40 && t_x < 90) { if (respawnAleatorioMin < 60) respawnAleatorioMin++; if (respawnAleatorioMax < respawnAleatorioMin) respawnAleatorioMax = respawnAleatorioMin; lastTouchTime = agora; return; }
-                if (t_x > 150 && t_x < 200) { if (respawnAleatorioMax < 60) respawnAleatorioMax++; lastTouchTime = agora; return; }
-            } else if (t_y > 200 && t_y < 240) {
-                if (t_x > 40 && t_x < 90) { if (respawnAleatorioMin > 1) respawnAleatorioMin--; lastTouchTime = agora; return; }
-                if (t_x > 150 && t_x < 200) { if (respawnAleatorioMax > respawnAleatorioMin) respawnAleatorioMax--; lastTouchTime = agora; return; }
+        async function escreverComRetry(url, opts, descricao) {
+            try {
+                const res = await fetch(url, opts);
+                if (!res.ok) throw new Error('status ' + res.status);
+                return true;
+            } catch (err) {
+                filaEscritas.push({ url, opts, descricao: descricao || '', tentativas: 0 });
+                salvarFila(); return false;
             }
-        } else {
-            if (t_y > 95 && t_y < 135 && t_x > 95 && t_x < 145) { if (respawnFixoMinutos < 60) respawnFixoMinutos++; lastTouchTime = agora; return; }
-            if (t_y > 200 && t_y < 240 && t_x > 95 && t_x < 145) { if (respawnFixoMinutos > 1) respawnFixoMinutos--; lastTouchTime = agora; return; }
         }
-        if (t_y > 265 && t_y < 305 && t_x > 55 && t_x < 185) { telaAtual = 5; desenharInterfaceLobby(); lastTouchTime = agora; return; }
-    }
-    
-    if (telaAtual == 5) {
-      if (!jogoRodando && t_y > 25 && t_y < 50 && t_x > 5 && t_x < 60) { if(modoSelecionado == MODE_QUIRAL) {telaAtual = 4; desenharTelaAjusteCooldown();} else {telaAtual = 2; desenharTelaTempo();} lastTouchTime = agora; return; }
-      if (agora - lastTouchTime > 1000) {
-        if (t_y > 25 && t_y < 50) { 
-          if (t_x > 70 && t_x < 150 && !jogoRodando) { duracaoJogo = (horasConfiguradas * 3600UL + minutosConfigurados * 60UL) * 1000UL; tempoInicioJogo = millis(); pontuacaoAzul = 0; pontuacaoAmarelo = 0; jogoRodando = true; resetNodesForNewGame(); criarNovoArquivoLog(); registrarLog("INICIO DA PARTIDA."); enviarComandoInicio(); desenharInterfaceLobby(); lastTouchTime = agora; return; } 
-          else if (t_x > 160 && t_x < 235 && jogoRodando) { jogoRodando = false; registrarLog("FIM DA PARTIDA."); enviarComandoParada(); telaAtual = 6; desenharGameOver(); lastTouchTime = agora; return; }
-        }
-        if (jogoRodando) {
-          const int startX = 5, startY = 185, boxW = 110, boxH = 26, gapX = 8, gapY = 2;
-          for (int i = 1; i <= NODE_COUNT; i++) {
-            int row = (i - 1) / 2; int col = (i - 1) % 2; int x = startX + col * (boxW + gapX); int y = startY + row * (boxH + gapY);
-            if (t_x >= x && t_x <= x + boxW && t_y >= y && t_y <= y + boxH) {
-              if (nodes[i].online && !nodes[i].ativo) {
-                 QuiralPacket pkt = {}; pkt.type = PKT_REACTIVATE_NODE; pkt.toId = i; pkt.active = true; sendPacket(pkt);
-                 registrarLog("Nó " + String(i) + " REATIVADO via Touch."); tft.drawRect(x, y, boxW, boxH, TFT_WHITE); lastTouchTime = agora; return;
-              }
-            }
-          }
-        }
-      }
-    }
 
-    if (telaAtual == 6 && agora - lastTouchTime > 1000 && t_y > 260 && t_y < 300 && t_x > 60 && t_x < 180) { telaAtual = 1; desenharMenuModos(); lastTouchTime = agora; return; }
-    if (telaAtual == 9 && agora - lastTouchTime > 1000 && t_y > 260 && t_y < 300 && t_x > 60 && t_x < 180) { QuiralPacket pkt = {}; pkt.type = PKT_IDLE; pkt.toId = QR_BROADCAST_ID; pkt.active = false; sendPacket(pkt); telaAtual = 1; desenharMenuModos(); lastTouchTime = agora; return; }
-  }
-}
-
-// ==========================================
-// SETUP & LOOP
-// ==========================================
-void setup() {
-  Serial.begin(115200);
-  pinMode(CYD_LED_BACKLIGHT, OUTPUT); digitalWrite(CYD_LED_BACKLIGHT, HIGH);
-  tft.init(); tft.invertDisplay(true); tft.setRotation(0); tft.fillScreen(TFT_BLACK);
-  
-  mySpi.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS); 
-  ts.begin(mySpi); 
-  ts.setRotation(0); 
-  touchIniciado = true; 
-
-  Wire.begin(I2C_SDA, I2C_SCL);
-  if (!rtc.begin()) { rtcDisponivel = false; } else { 
-      rtcDisponivel = true; 
-      DateTime now = rtc.now();
-      struct tm timeinfo = {0};
-      timeinfo.tm_year = now.year() - 1900; timeinfo.tm_mon = now.month() - 1; timeinfo.tm_mday = now.day();
-      timeinfo.tm_hour = now.hour(); timeinfo.tm_min = now.minute(); timeinfo.tm_sec = now.second();
-      time_t epoch = mktime(&timeinfo);
-      struct timeval tv; tv.tv_sec = epoch; tv.tv_usec = 0; settimeofday(&tv, NULL);
-  }
-
-  sdSpi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-  if (SD.begin(SD_CS, sdSpi)) {
-      sdDisponivel = true;
-      gif.begin(GIF_PALETTE_RGB565_LE);
-      if (SD.exists("/logo.gif")) reproduzirGif("/logo.gif");
-  } else { sdDisponivel = false; delay(1000); }
-
-  LoRaSerial.begin(9600, SERIAL_8N1, LORA_RX, LORA_TX);
-  for(int i=0; i<HISTORY_SIZE; i++) msgHistory[i] = 0;
-
-  if (carregarWiFiSD()) { telaAtual = 1; desenharMenuModos(); } else { escanearWiFi(); telaAtual = 10; desenharTelaWiFi(); }
-
-  xTaskCreatePinnedToCore(TaskWiFiUpload, "WiFiTask", 8192, NULL, 1, NULL, 0);
-}
-
-void loop() {
-  lerTouch(); 
-  
-  QuiralPacket pkt;
-  static unsigned long lastCaptureTime[NODE_COUNT + 1] = {0}; // <--- NOVO: ANTI-BURST
-
-  while (readPacket(pkt)) {
-    if (!isMessageSeen(pkt.msgId)) {
-      addMessageToHistory(pkt.msgId);
-      int id = pkt.fromId; 
-      if (id >= 1 && id <= NODE_COUNT) {
-        nodes[id].lastSeen = millis(); nodes[id].online = true; nodes[id].ativo = pkt.active; nodes[id].tempoRestante = pkt.nodeRemainingSec; 
-        
-        if (jogoRodando) {
-            nodes[id].owner = pkt.team; 
-            if (pkt.type == PKT_CAPTURE_EVENT) { 
-              
-              // --- ANTI-BURST HACK (Evita Falsos Odisseus) ---
-              unsigned long agora = millis();
-              if (agora - lastCaptureTime[id] < 3000) continue; 
-              lastCaptureTime[id] = agora;
-              // -----------------------------------------------
-
-              registrarLog("No " + String(id) + " capturado por " + String((pkt.team == TEAM_BLUE) ? "AZUL" : "AMARELA"));
-              if (modoSelecionado == MODE_QUIRAL) {
-                if (pkt.team == TEAM_BLUE) {
-                    comboCountBlue = (agora - lastScoreTimeBlue < COMBO_WINDOW) ? comboCountBlue + 1 : 1; lastScoreTimeBlue = agora;
-                    if(comboCountBlue >= 3) { pontuacaoAzul += 5; comboCountBlue = 0; triggerOdisseu("EQUIPE AZUL DOMINANDO!"); enviarOdisseuParaNos(id, TEAM_BLUE); } else pontuacaoAzul++;
-                } else if (pkt.team == TEAM_YELLOW) {
-                    comboCountYellow = (agora - lastScoreTimeYellow < COMBO_WINDOW) ? comboCountYellow + 1 : 1; lastScoreTimeYellow = agora;
-                    if(comboCountYellow >= 3) { pontuacaoAmarelo += 5; comboCountYellow = 0; triggerOdisseu("EQUIPE AMARELA DOMINANDO!"); enviarOdisseuParaNos(id, TEAM_YELLOW); } else pontuacaoAmarelo++;
+        async function processarFilaEscritas() {
+            if (!filaEscritas.length) return;
+            const restantes = [];
+            for (const item of filaEscritas) {
+                try {
+                    const res = await fetch(item.url, item.opts);
+                    if (!res.ok) throw new Error('status ' + res.status);
+                } catch (err) {
+                    item.tentativas = (item.tentativas || 0) + 1;
+                    if (item.tentativas < 40) restantes.push(item);
                 }
-              }
+            }
+            const tinhaAlgo = filaEscritas.length > 0;
+            filaEscritas = restantes; salvarFila();
+            if (tinhaAlgo && filaEscritas.length === 0) mostrarToast('✔ Tudo sincronizado com a nuvem.');
+        }
+
+        let toastTimer = null;
+        function mostrarToast(texto) {
+            const el = document.getElementById('toast'); el.textContent = texto; el.classList.remove('hidden', 'opacity-0');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { el.classList.add('opacity-0'); setTimeout(() => el.classList.add('hidden'), 300); }, 4000);
+        }
+
+        function toFirebaseKeyed(obj) { const out = {}; Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; }); return out; }
+        function fromFirebaseKeyed(raw) {
+            const out = {}; if (!raw) return out;
+            Object.keys(raw).forEach(k => { if (raw[k] == null) return; const id = String(k).replace(/^n/, ''); out[id] = raw[k]; });
+            return out;
+        }
+
+        async function sha256(texto) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function showModal(title, html) {
+            document.querySelector('#modal-box h3').innerText = title; document.getElementById('modal-text').innerHTML = html;
+            const box = document.getElementById('modal-box'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+        }
+        function closeModal() {
+            const box = document.getElementById('modal-box'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200);
+        }
+
+        // =====================================
+        // LOGIN / SESSÃO
+        // =====================================
+        function openLoginModal() {
+            if (session) { logout(); return; }
+            document.getElementById('login-user').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden');
+            const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); document.getElementById('login-user').focus();
+        }
+        function closeLoginModal() { const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+
+        async function tentarLogin(userDigitado, senha) {
+            const res = await fetch(AUTH_URL + '?nocache=' + Date.now()); const contas = (await res.json()) || {}; const hash = await sha256(senha);
+            if (!contas.admin) {
+                const hashPadrao = await sha256('quiral2026');
+                if (userDigitado.toLowerCase() === 'admin' && hash === hashPadrao) {
+                    const conta = { user: 'admin', passHash: hashPadrao, role: 'admin', team: null, label: ROLE_LABELS.admin };
+                    await fetch(FIREBASE_BASE + '/quiral_auth/admin.json', { method: 'PUT', body: JSON.stringify(conta) }); return conta;
+                }
+            }
+            for (const key of ROLE_KEYS) {
+                const conta = contas[key];
+                if (conta && conta.user && conta.user.toLowerCase() === userDigitado.toLowerCase() && conta.passHash === hash) return conta;
+            }
+            return null;
+        }
+
+        async function autenticar() {
+            const u = document.getElementById('login-user').value.trim(); const p = document.getElementById('login-pass').value; if (!u || !p) return;
+            const conta = await tentarLogin(u, p);
+            if (conta) {
+                session = { role: conta.role, team: conta.team || null, label: conta.label || conta.user, user: conta.user };
+                sessionStorage.setItem('quiral_session', JSON.stringify(session)); closeLoginModal(); applySessionUI(); fetchComandos(); fetchMarcadores();
+            } else { document.getElementById('login-erro').classList.remove('hidden'); }
+        }
+
+        function logout() { session = null; sessionStorage.removeItem('quiral_session'); applySessionUI(); }
+
+        function applySessionUI() {
+            isAdmin = !!(session && session.role === 'admin');
+            document.getElementById('btn-upload').classList.toggle('hidden', !isAdmin);
+            document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-salvar-layout').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-marcador').classList.toggle('hidden', !(session && session.role === 'comandante'));
+            document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
+            const loginBtn = document.getElementById('btn-login'); const badge = document.getElementById('session-badge');
+            if (session) {
+                loginBtn.textContent = 'SAIR'; const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
+                badge.className = 'mt-2 text-xs ' + cor; badge.textContent = 'Conectado: ' + (session.label || session.user); badge.classList.remove('hidden');
+            } else {
+                loginBtn.textContent = '🔒 ENTRAR'; badge.classList.add('hidden'); comandosAtuais = {}; marcadoresAtuais = {}; renderMarcadores();
+            }
+            document.querySelectorAll('.map-node').forEach(el => el.classList.toggle('admin-mode', isAdmin));
+            renderComandosOverlay();
+        }
+
+        // =====================================
+        // MAPA: LÓGICA DE CLIQUE E ARRASTO (BLINDADA)
+        // =====================================
+        function defaultPosition(id, total) {
+            const cols = Math.ceil(Math.sqrt(total)); const rows = Math.ceil(total / cols); const idx = id - 1;
+            return { x: (((idx % cols) + 0.5) / cols) * 100, y: ((Math.floor(idx / cols) + 0.5) / rows) * 100 };
+        }
+
+        function ensureNodeElements(n) {
+            if (n === currentNodeCount) return; currentNodeCount = n;
+            const layer = document.getElementById('map-nodes-layer'); layer.innerHTML = '';
+            for (let i = 1; i <= n; i++) {
+                const el = document.createElement('div'); el.id = `map-node-${i}`; el.textContent = i;
+                const pos = nodePositions[i] || defaultPosition(i, n);
+                el.style.left = pos.x + '%'; el.style.top = pos.y + '%';
+                el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline touch-none' + (isAdmin ? ' admin-mode' : '');
+                
+                const badgeAzul = document.createElement('span'); badgeAzul.id = `ordem-badge-azul-${i}`;
+                badgeAzul.className = 'ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300';
+                el.appendChild(badgeAzul);
+                
+                const badgeAmarelo = document.createElement('span'); badgeAmarelo.id = `ordem-badge-amarelo-${i}`;
+                badgeAmarelo.className = 'ordem-badge hidden absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-yellow-300';
+                el.appendChild(badgeAmarelo);
+                
+                attachNodeInteraction(el, i); layer.appendChild(el);
             }
         }
-      }
-    }
-  }
 
-  unsigned long agora = millis();
-  for(int i=1; i<=NODE_COUNT; i++) { if (agora - nodes[i].lastSeen > 6000) nodes[i].online = false; }
-  
-  if (odisseuTriggered && agora - odisseuSince > 3000) odisseuTriggered = false;
+        let layoutPendente = false;
+        function marcarLayoutPendente() { layoutPendente = true; const btn = document.getElementById('btn-salvar-layout'); btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse'); }
 
-  if (jogoRodando && (agora - tempoInicioJogo > duracaoJogo)) {
-    jogoRodando = false; registrarLog("FIM DA PARTIDA (TEMPO)."); enviarComandoParada(); telaAtual = 6; desenharGameOver();
-  }
+        async function salvarLayout() {
+            if (!isAdmin) return;
+            const btn = document.getElementById('btn-salvar-layout'); btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
+            const ok = await escreverComRetry(`${FIREBASE_BASE}/quiral_config/positions.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) }, 'Salvar layout');
+            layoutPendente = false; btn.textContent = ok ? 'SALVO ✔' : 'SEM SINAL — na fila'; setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 1800);
+        }
 
-  static unsigned long lastCentralBeacon = 0;
-  if (agora - lastCentralBeacon > 2000) {
-      QuiralPacket bPkt = {}; bPkt.type = PKT_HEARTBEAT; bPkt.toId = QR_BROADCAST_ID; bPkt.mode = modoSelecionado; bPkt.active = jogoRodando; 
-      if (modoSelecionado == MODE_QUIRAL) {
-          if (cooldownAleatorio) { bPkt.confMinSec = respawnAleatorioMin * 60; bPkt.confMaxSec = respawnAleatorioMax * 60; } 
-          else { bPkt.confMinSec = respawnFixoMinutos * 60; bPkt.confMaxSec = respawnFixoMinutos * 60; }
-      }
-      sendPacket(bPkt); lastCentralBeacon = agora;
-  }
-  
-  atualizarDisplay();
-}
+        function attachNodeInteraction(el, id) {
+            let dragging = false, startX = 0, startY = 0;
+            
+            // Lógica Pura de Clique (Comandantes e Admin)
+            el.addEventListener('click', (e) => {
+                if (el.dataset.dragged === 'true') { el.dataset.dragged = 'false'; return; }
+                onNodeTap(id);
+            });
+
+            // Lógica Exclusiva de Arrasto (Apenas Admin)
+            el.addEventListener('pointerdown', (e) => {
+                if (!isAdmin) return;
+                dragging = true; startX = e.clientX; startY = e.clientY;
+                el.dataset.dragged = 'false'; el.setPointerCapture(e.pointerId);
+            });
+            el.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) el.dataset.dragged = 'true';
+                if (el.dataset.dragged === 'true') {
+                    const rect = document.getElementById('map-container').getBoundingClientRect();
+                    let x = Math.max(1, Math.min(99, ((e.clientX - rect.left) / rect.width) * 100));
+                    let y = Math.max(1, Math.min(99, ((e.clientY - rect.top) / rect.height) * 100));
+                    el.style.left = x + '%'; el.style.top = y + '%';
+                }
+            });
+            el.addEventListener('pointerup', (e) => {
+                if (!dragging) return;
+                dragging = false; el.releasePointerCapture(e.pointerId);
+                if (el.dataset.dragged === 'true') {
+                    nodePositions[id] = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+                    marcarLayoutPendente();
+                }
+            });
+        }
+
+        function onNodeTap(id) {
+            if (session && session.role === 'comandante') { openOrdemModal(id); return; }
+            showNodeDetail(id);
+        }
+
+        function showNodeDetail(id) {
+            const node = (lastFullData && lastFullData.nos && lastFullData.nos[id - 1]) || null;
+            if (!node) { showModal('NÓ ' + id, 'Sem dados disponíveis ainda.'); return; }
+            const isQuiral = lastFullData.md === 'QUIRAL';
+            let estado = node.online ? '<span class="text-green-400">EM LINHA</span>' : '<span class="text-red-400">OFFLINE</span>'; let extra = '';
+            if (node.online) {
+                if (isQuiral) extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>';
+                else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>';
+            }
+            let ordemInfo = '';
+            if (session) {
+                const linhas = [];
+                ['azul', 'amarelo'].forEach(team => {
+                    const o = comandosAtuais[team] && comandosAtuais[team][id];
+                    if (o) linhas.push(`<span class="${team === 'azul' ? 'text-blue-400' : 'text-yellow-400'} font-bold">${team.toUpperCase()}</span>: ` + (o.ordem === 'atacar' ? '<span class="text-red-400 font-bold">⚔ ATACAR</span>' : '<span class="text-blue-300 font-bold">🛡 DEFENDER</span>'));
+                });
+                if (linhas.length) ordemInfo = '<br><br><span class="text-[10px] text-gray-500">Ordens:</span><br>' + linhas.join('<br>');
+            }
+            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra + ordemInfo);
+        }
+
+        // =====================================
+        // ORDENS TÁTICAS 
+        // =====================================
+        function openOrdemModal(id) {
+            ordemNodeAlvo = id; document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
+            const box = document.getElementById('ordem-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+        }
+        function closeOrdemModal() { const box = document.getElementById('ordem-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); ordemNodeAlvo = null; }
+
+        async function emitirOrdem(tipo) {
+            if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
+            const id = ordemNodeAlvo; const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
+            if (tipo) {
+                await escreverComRetry(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) }, `Ordem nó ${id}`);
+                escreverComRetry(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}/o_${Date.now()}_n${id}.json`, { method: 'PUT', body: JSON.stringify({ node: id, ordem: tipo, autor: session.label, ts: Date.now() }) });
+            } else { await escreverComRetry(path, { method: 'DELETE' }); }
+            await fetchComandos(); closeOrdemModal();
+        }
+
+        function removerExpiradas(ordens) {
+            const lim = Date.now() - ORDEM_EXPIRA_MIN * 60 * 1000; const out = {};
+            Object.keys(ordens).forEach(id => { if (ordens[id] && ordens[id].ts > lim) out[id] = ordens[id]; }); return out;
+        }
+
+        async function fetchComandos() {
+            if (!session) { comandosAtuais = {}; renderComandosOverlay(); return; }
+            try {
+                let novo;
+                if (isAdmin) {
+                    const [ra, ry] = await Promise.all([fetch(`${FIREBASE_BASE}/quiral_comandos/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_comandos/amarelo.json?nocache=` + Date.now())]);
+                    novo = { azul: removerExpiradas(fromFirebaseKeyed(await ra.json())), amarelo: removerExpiradas(fromFirebaseKeyed(await ry.json())) };
+                } else if (session.team) {
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_comandos/${session.team}.json?nocache=` + Date.now());
+                    novo = { [session.team]: removerExpiradas(fromFirebaseKeyed(await res.json())) };
+                } else { novo = {}; }
+                
+                if (comandosAnteriores && session.role !== 'comandante') {
+                    let novas = 0;
+                    ['azul', 'amarelo'].forEach(t => { Object.keys(novo[t] || {}).forEach(id => { if (!(comandosAnteriores[t] || {})[id]) novas++; }); });
+                    if (novas > 0) { mostrarToast(novas === 1 ? '⚔ Nova ordem recebida!' : `⚔ ${novas} novas ordens!`); if (navigator.vibrate) navigator.vibrate([120, 60, 120]); }
+                }
+                comandosAnteriores = novo; comandosAtuais = novo;
+            } catch (err) {}
+            renderComandosOverlay();
+        }
+
+        function renderComandosOverlay() {
+            document.querySelectorAll('.ordem-badge').forEach(b => { b.classList.add('hidden'); b.classList.remove('bg-red-600', 'bg-blue-600'); });
+            Object.keys(comandosAtuais).forEach(team => {
+                Object.keys(comandosAtuais[team] || {}).forEach(id => {
+                    const o = comandosAtuais[team][id];
+                    const badge = document.getElementById(`ordem-badge-${team}-${id}`);
+                    if (!o || !o.ordem || !badge) return;
+                    badge.textContent = o.ordem === 'atacar' ? '⚔' : '🛡';
+                    badge.classList.remove('hidden'); badge.classList.add(o.ordem === 'atacar' ? 'bg-red-600' : 'bg-blue-600');
+                });
+            });
+        }
+
+        // =====================================
+        // MARCADORES LIVRES
+        // =====================================
+        function ativarModoMarcador() {
+            if (!session || session.role !== 'comandante') return;
+            colocandoMarcador = !colocandoMarcador;
+            const btn = document.getElementById('btn-marcador');
+            document.getElementById('marcador-hint').classList.toggle('hidden', !colocandoMarcador);
+            btn.classList.toggle('bg-purple-700', colocandoMarcador); btn.textContent = colocandoMarcador ? '📍 TOQUE NO MAPA...' : '📍 MARCADOR';
+        }
+
+        function wireMapaClickParaMarcador() {
+            document.getElementById('map-container').addEventListener('click', (e) => {
+                if (!colocandoMarcador) return;
+                if (e.target.closest('.map-node') || e.target.closest('.marcador-pin')) return;
+                const rect = document.getElementById('map-container').getBoundingClientRect();
+                let x = Math.max(1, Math.min(99, ((e.clientX - rect.left) / rect.width) * 100));
+                let y = Math.max(1, Math.min(99, ((e.clientY - rect.top) / rect.height) * 100));
+                ativarModoMarcador(); 
+                const label = prompt('Nome do marcador:'); if (label === null) return;
+                escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/m_${Date.now()}.json`, { method: 'PUT', body: JSON.stringify({ x, y, label: label.trim() || 'Marcador', ts: Date.now(), autor: session.label }) }).then(fetchMarcadores);
+            });
+        }
+
+        async function removerMarcador(team, chave) {
+            if (!session || session.role !== 'comandante' || session.team !== team) return;
+            if (!confirm('Remover este marcador?')) return;
+            await escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }); await fetchMarcadores();
+        }
+
+        async function fetchMarcadores() {
+            if (!session) { marcadoresAtuais = {}; renderMarcadores(); return; }
+            try {
+                if (isAdmin) {
+                    const [ra, ry] = await Promise.all([fetch(`${FIREBASE_BASE}/quiral_config/marcadores/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_config/marcadores/amarelo.json?nocache=` + Date.now())]);
+                    marcadoresAtuais = { azul: (await ra.json()) || {}, amarelo: (await ry.json()) || {} };
+                } else if (session.team) {
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}.json?nocache=` + Date.now());
+                    marcadoresAtuais = { [session.team]: (await res.json()) || {} };
+                } else { marcadoresAtuais = {}; }
+            } catch (err) {}
+            renderMarcadores();
+        }
+
+        function renderMarcadores() {
+            const layer = document.getElementById('map-marcadores-layer'); if (!layer) return; layer.innerHTML = '';
+            Object.keys(marcadoresAtuais).forEach(team => {
+                Object.keys(marcadoresAtuais[team] || {}).forEach(chave => {
+                    const m = marcadoresAtuais[team][chave]; if (!m) return;
+                    const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
+                    const pin = document.createElement('div');
+                    pin.className = 'marcador-pin absolute -ml-3 -mt-6 flex flex-col items-center cursor-pointer select-none touch-none';
+                    pin.style.left = m.x + '%'; pin.style.top = m.y + '%';
+                    pin.innerHTML = `<span class="text-lg ${cor}">📍</span><span class="text-[9px] bg-black/70 ${cor} px-1 rounded whitespace-nowrap">${(m.label || '').slice(0, 20)}</span>`;
+                    pin.onclick = () => removerMarcador(team, chave);
+                    layer.appendChild(pin);
+                });
+            });
+        }
+
+        // =====================================
+        // HISTÓRICO DE ORDENS E EXPORTAÇÃO
+        // =====================================
+        async function openHistoricoModal() {
+            if (!session) return;
+            document.getElementById('historico-modal').classList.remove('hidden'); requestAnimationFrame(() => document.getElementById('historico-modal').classList.remove('opacity-0'));
+            const lista = document.getElementById('historico-lista'); lista.innerHTML = '<p class="text-gray-500 text-center">Carregando...</p>';
+            try {
+                let entradas = [];
+                if (isAdmin) {
+                    const [ra, ry] = await Promise.all([fetch(`${FIREBASE_BASE}/quiral_ordens_log/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_ordens_log/amarelo.json?nocache=` + Date.now())]);
+                    entradas = [...Object.values((await ra.json()) || {}).map(e => ({ ...e, team: 'azul' })), ...Object.values((await ry.json()) || {}).map(e => ({ ...e, team: 'amarelo' }))];
+                } else if (session.team) {
+                    entradas = Object.values((await (await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}.json?nocache=` + Date.now())).json()) || {}).map(e => ({ ...e, team: session.team }));
+                }
+                entradas = entradas.filter(Boolean).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                if (!entradas.length) { lista.innerHTML = '<p class="text-gray-500 text-center">Nenhuma ordem registada.</p>'; return; }
+                lista.innerHTML = entradas.map(e => `<div class="border-b border-gray-800 pb-1"><span class="text-gray-600">[${new Date(e.ts).toLocaleTimeString('pt-PT', {hour12:false})}]</span> <span class="${e.team === 'azul' ? 'text-blue-400' : 'text-yellow-400'} font-bold">${e.team.toUpperCase()}</span> ${e.ordem === 'atacar' ? '⚔' : '🛡'} Nó ${e.node}</div>`).join('');
+            } catch (err) { lista.innerHTML = '<p class="text-red-400 text-center">Erro ao carregar histórico.</p>'; }
+        }
+        function closeHistoricoModal() { const box = document.getElementById('historico-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+
+        async function exportarLog() {
+            try {
+                const data = (await (await fetch(LOGS_URL + '?nocache=' + Date.now())).json()) || {};
+                const texto = Object.values(data).sort((a, b) => (a.ts || 0) - (b.ts || 0)).map(e => `[${e.t}] ${(e.m || '').replace(/<[^>]+>/g, '')}`).join('\n') || 'Sem registos.';
+                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([texto], { type: 'text/plain;charset=utf-8' })); a.download = `registo-${Date.now()}.txt`;
+                document.body.appendChild(a); a.click(); a.remove();
+            } catch (err) { mostrarToast('Falha ao exportar.'); }
+        }
+
+        // =====================================
+        // MODO NOTURNO / WAKE LOCK
+        // =====================================
+        function toggleModoNoturno(forcar) {
+            const n = typeof forcar === 'boolean' ? forcar : !document.body.classList.contains('modo-noturno');
+            document.body.classList.toggle('modo-noturno', n); localStorage.setItem('quiral_modo_noturno', n ? '1' : '0'); document.getElementById('btn-noturno').classList.toggle('text-red-500', n);
+        }
+
+        async function toggleWakeLock() {
+            const btn = document.getElementById('btn-wakelock');
+            if (wakeLock) { try { await wakeLock.release(); } catch (err) {} wakeLock = null; btn.classList.remove('text-yellow-400'); mostrarToast('Tela normal.'); return; }
+            if (!('wakeLock' in navigator)) { mostrarToast('Não suportado pelo navegador.'); return; }
+            try { wakeLock = await navigator.wakeLock.request('screen'); btn.classList.add('text-yellow-400'); mostrarToast('Tela sempre ligada.'); wakeLock.addEventListener('release', () => { wakeLock = null; btn.classList.remove('text-yellow-400'); }); } catch (err) { mostrarToast('Erro ao manter tela ligada.'); }
+        }
+        document.addEventListener('visibilitychange', async () => { if (wakeLock !== null && document.visibilityState === 'visible') { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {} } });
+
+        // =====================================
+        // CONTAS
+        // =====================================
+        async function openContasModal() { if (!isAdmin) return; document.getElementById('contas-modal').classList.remove('hidden'); requestAnimationFrame(() => document.getElementById('contas-modal').classList.remove('opacity-0')); await renderContasList(); }
+        function closeContasModal() { document.getElementById('contas-modal').classList.add('opacity-0'); setTimeout(() => document.getElementById('contas-modal').classList.add('hidden'), 200); }
+        async function renderContasList() {
+            const c = document.getElementById('contas-lista'); c.innerHTML = '<p class="text-center">Carregando...</p>';
+            const contas = (await (await fetch(AUTH_URL + '?nocache=' + Date.now())).json()) || {}; c.innerHTML = '';
+            ROLE_KEYS.forEach(k => {
+                c.innerHTML += `<div class="border border-gray-700 rounded p-3"><p class="text-xs text-gray-400 font-bold mb-2">${ROLE_LABELS[k]}</p><input type="text" id="conta-user-${k}" value="${contas[k]?.user || ''}" placeholder="usuário" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">${k === 'admin' ? `<input type="password" id="conta-senha-atual-${k}" placeholder="senha atual" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white">` : ''}<input type="password" id="conta-pass-${k}" placeholder="nova senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white"><button onclick="salvarConta('${k}')" class="w-full bg-green-800 py-2 rounded text-xs text-white">SALVAR</button><p id="conta-msg-${k}" class="text-[10px] mt-1 hidden"></p></div>`;
+            });
+        }
+        async function salvarConta(key) {
+            const u = document.getElementById(`conta-user-${key}`).value.trim(), p = document.getElementById(`conta-pass-${key}`).value, m = document.getElementById(`conta-msg-${key}`);
+            if (!u) { m.textContent = 'Informe usuário.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); return; }
+            try {
+                const cur = (await (await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json?nocache=` + Date.now())).json()) || {};
+                if (key === 'admin' && cur.passHash) {
+                    const s = document.getElementById('conta-senha-atual-admin').value; if (!s || await sha256(s) !== cur.passHash) { m.textContent = 'Senha atual incorreta.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); return; }
+                }
+                const passHash = p ? await sha256(p) : cur.passHash; if (!passHash) { m.textContent = 'Defina senha.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); return; }
+                await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json`, { method: 'PUT', body: JSON.stringify({ user: u, passHash, role: roleTypeOf(key), team: roleTeamOf(key), label: ROLE_LABELS[key] }) });
+                m.textContent = 'Salvo!'; m.className = 'text-[10px] mt-1 text-green-400'; m.classList.remove('hidden'); document.getElementById(`conta-pass-${key}`).value = '';
+                if (session && cur.user && session.user.toLowerCase() === cur.user.toLowerCase()) { session.user = u; sessionStorage.setItem('quiral_session', JSON.stringify(session)); applySessionUI(); }
+            } catch (err) { m.textContent = 'Erro.'; m.className = 'text-[10px] mt-1 text-red-400'; m.classList.remove('hidden'); }
+        }
+
+        // =====================================
+        // ATUALIZAÇÃO VISUAL: NODES NA TELA
+        // =====================================
+        function renderVisuals(data) {
+            const isQuiral = data.md === "QUIRAL"; const miniGrid = document.getElementById('nodes-grid'); miniGrid.innerHTML = '';
+            data.nos.forEach((node, i) => {
+                const id = i + 1; let cssClass = "offline"; let badgeColor = "bg-gray-800 border-gray-700";
+                if (node.online) {
+                    if (isQuiral) { cssClass = node.ativo ? "active-green" : "inactive-red"; badgeColor = node.ativo ? "bg-green-900 border-green-600" : "bg-red-900 border-red-600"; } 
+                    else { if (node.owner === 1) { cssClass = "active-blue"; badgeColor = "bg-blue-900 border-blue-600"; } else if (node.owner === 2) { cssClass = "active-yellow"; badgeColor = "bg-yellow-900 border-yellow-600"; } else { cssClass = "offline"; badgeColor = "bg-gray-700 border-gray-500"; } }
+                }
+                const mapNode = document.getElementById(`map-node-${id}`);
+                if (mapNode) mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none touch-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
+                miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
+            });
+        }
+        function updateNodeCount(nos) { document.getElementById('node-count').textContent = `(${nos.filter(n => n.online).length}/${nos.length} em linha)`; }
+
+        // =====================================
+        // MAPA UPLOAD
+        // =====================================
+        function wireMapUpload() {
+            document.getElementById('map-upload').addEventListener('change', async (e) => {
+                const file = e.target.files[0]; if (!file) return; const label = document.getElementById('btn-upload'); label.style.opacity = 0.6;
+                try {
+                    const dataUrl = await new Promise((resolve, reject) => { const img = new Image(); const url = URL.createObjectURL(file); img.onload = () => { const s = Math.min(1, 1280 / img.width); const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); resolve(c.toDataURL('image/jpeg', 0.72)); }; img.onerror = reject; img.src = url; });
+                    await fetch(`${FIREBASE_BASE}/quiral_config/mapImage.json`, { method: 'PUT', body: JSON.stringify(dataUrl) });
+                    const img = document.getElementById('map-bg'); img.onload = () => document.getElementById('map-container').style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight; img.src = dataUrl; img.classList.remove('hidden'); document.getElementById('map-placeholder').classList.add('hidden');
+                } catch (err) { showModal('ERRO', 'Não foi possível processar a imagem do mapa.'); } finally { label.style.opacity = 1; e.target.value = ''; }
+            });
+        }
+
+        // =====================================
+        // LOGS DEDUPLICAÇÃO
+        // =====================================
+        function addLog(key, html, timeStr) {
+            if (renderedLogKeys.has(key)) return; renderedLogKeys.add(key); const box = document.getElementById('log-box'); if (box.dataset.empty === '1') { box.innerHTML = ''; box.dataset.empty = '0'; }
+            const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 60;
+            const row = document.createElement('div'); row.className = 'log-entry border-b border-gray-800/60 pb-1'; row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> ${html}`; box.appendChild(row);
+            if (wasNearBottom) { box.scrollTop = box.scrollHeight; document.getElementById('jump-latest').classList.add('hidden'); } else { document.getElementById('jump-latest').classList.remove('hidden'); }
+        }
+        async function saveLogToCloud(key, html) {
+            const timeStr = new Date().toLocaleTimeString('pt-PT', { hour12: false }); addLog(key, html, timeStr);
+            try { await fetch(`${FIREBASE_BASE}/quiral_logs/${key}.json`, { method: 'PUT', body: JSON.stringify({ t: timeStr, m: html, ts: Date.now() }) }); } catch (err) {}
+        }
+        async function fetchCloudLogs() {
+            try {
+                const data = await (await fetch(LOGS_URL + '?nocache=' + Date.now())).json();
+                if (!data) { if (renderedLogKeys.size > 0) { renderedLogKeys.clear(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; } return; }
+                Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0)).forEach(entry => addLog(entry.key, entry.m, entry.t));
+            } catch (err) {}
+        }
+        async function startNewMatchLogs() {
+            renderedLogKeys.clear(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1';
+            try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); await fetch(ORDENS_LOG_URL, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' }); } catch (err) {}
+            comandosAtuais = {}; comandosAnteriores = null; marcadoresAtuais = {}; renderComandosOverlay(); renderMarcadores(); saveLogToCloud('sys_start', '<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!');
+        }
+
+        // =====================================
+        // CICLO PRINCIPAL
+        // =====================================
+        function updateStatusBadge(type, playing) {
+            const badge = document.getElementById('status-badge');
+            if (type === 'ok' && playing) { badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse"; } 
+            else if (type === 'ok' && !playing) { badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600"; } 
+            else { badge.innerText = "FALHA DE SINAL FIREBASE"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-red-900/50 text-red-400 border border-red-600 pulse"; }
+        }
+
+        async function fetchUplinkData() {
+            try {
+                const data = await (await fetch(GAME_URL + "?nocache=" + Date.now())).json(); if (!data) return;
+                lastSuccessfulFetch = Date.now(); lastFullData = data; document.getElementById('last-update').innerText = new Date().toLocaleTimeString('pt-PT');
+                const isPlaying = (data.st === "ON");
+                document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0"; document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0";
+                document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00"; document.getElementById('game-mode').innerText = "MODO: " + (data.md || "--");
+                updateStatusBadge('ok', isPlaying);
+
+                if (isPlaying && lastGameState !== "ON") { await startNewMatchLogs(); } 
+                else if (!isPlaying && lastGameState === "ON") {
+                    const fa = parseInt(data.az || 0), fm = parseInt(data.am || 0);
+                    saveLogToCloud('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Placar final: <span class="text-gray-300">${fa}x${fm}</span> — ${fa > fm ? '<span class="text-blue-400 font-bold">EQUIPA AZUL VENCEU</span>' : (fm > fa ? '<span class="text-yellow-400 font-bold">EQUIPA AMARELA VENCEU</span>' : '<span class="text-gray-300 font-bold">EMPATE</span>')}`);
+                }
+
+                if (data.nos && Array.isArray(data.nos)) {
+                    ensureNodeElements(data.nos.length);
+                    if (isPlaying) {
+                        const tp = (data.tp || '00:00').replace(':', ''); const placar = ` <span class="text-gray-500">[${data.az}x${data.am}]</span>`;
+                        data.nos.forEach((node, i) => {
+                            const prev = lastNodesData ? lastNodesData[i] : null; if (!prev) return; const id = i + 1;
+                            if (node.online !== prev.online) saveLogToCloud(`n${id}_${node.online?'on':'off'}_${tp}`, `Nó ${id} <span class="text-${node.online?'green':'gray'}-400 font-bold">${node.online?'voltou a ficar em linha':'perdeu conexão (offline)'}</span>.`);
+                            if (data.md !== "QUIRAL" && node.owner !== prev.owner && node.online) saveLogToCloud(`n${id}_own_${tp}`, `Nó ${id} ${node.owner===1?'dominado pelo <span class="text-blue-400 font-bold">AZUL</span>':(node.owner===2?'dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>':'<span class="text-gray-400 font-bold">NEUTRALIZADO</span>')}.${placar}`);
+                            if (data.md === "QUIRAL" && node.ativo !== prev.ativo && node.online) {
+                                if (node.ativo) saveLogToCloud(`n${id}_reativado_${tp}`, `Nó ${id} <span class="text-green-400">REATIVADO</span> e pronto.`);
+                                else saveLogToCloud(`n${id}_cap_${tp}`, `Nó ${id} capturado por <span class="${data.az>lastScoreAzul?'text-blue-400':(data.am>lastScoreAmarelo?'text-yellow-400':'text-red-400')} font-bold">${data.az>lastScoreAzul?'AZUL':(data.am>lastScoreAmarelo?'AMARELO':'CAPTURADO')}</span>.${placar}`);
+                            }
+                        });
+                        lastScoreAzul = parseInt(data.az || 0); lastScoreAmarelo = parseInt(data.am || 0);
+                    }
+                    renderVisuals(data); updateNodeCount(data.nos); lastNodesData = JSON.parse(JSON.stringify(data.nos));
+                }
+                lastGameState = data.st;
+            } catch (err) { updateStatusBadge('error'); }
+        }
+
+        async function fetchConfig() {
+            try {
+                const data = await (await fetch(CONFIG_URL + "?nocache=" + Date.now())).json(); if (!data) return;
+                if (data.positions && !layoutPendente) {
+                    nodePositions = fromFirebaseKeyed(data.positions);
+                    Object.keys(nodePositions).forEach(id => { const el = document.getElementById(`map-node-${id}`); if (el) { el.style.left = nodePositions[id].x + '%'; el.style.top = nodePositions[id].y + '%'; } });
+                }
+                if (data.mapImage) {
+                    const img = document.getElementById('map-bg'); img.onload = () => document.getElementById('map-container').style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight; img.src = data.mapImage; img.classList.remove('hidden'); document.getElementById('map-placeholder').classList.add('hidden');
+                }
+            } catch (err) {}
+        }
+
+        function initMap() {
+            wireMapUpload(); wireMapaClickParaMarcador(); applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
+            if (localStorage.getItem('quiral_modo_noturno') === '1') toggleModoNoturno(true); atualizarIndicadorFila();
+            document.getElementById('btn-fullscreen').addEventListener('click', () => !document.fullscreenElement ? document.documentElement.requestFullscreen?.() : document.exitFullscreen?.());
+            document.getElementById('btn-reset-logs').addEventListener('click', async () => {
+                if (!confirm('Limpar todos os registos?')) return;
+                await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); await fetch(ORDENS_LOG_URL, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' });
+                renderedLogKeys.clear(); comandosAtuais = {}; comandosAnteriores = null; marcadoresAtuais = {}; renderComandosOverlay(); renderMarcadores(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1';
+            });
+            const box = document.getElementById('log-box'); const pill = document.getElementById('jump-latest');
+            pill.addEventListener('click', () => { box.scrollTop = box.scrollHeight; pill.classList.add('hidden'); });
+            box.addEventListener('scroll', () => { if ((box.scrollHeight - box.scrollTop - box.clientHeight) < 60) pill.classList.add('hidden'); });
+        }
+
+        async function bootDashboard() {
+            initMap(); await fetchConfig(); fetchUplinkData(); fetchCloudLogs(); if (session) { fetchComandos(); fetchMarcadores(); }
+            setInterval(fetchUplinkData, 2000); setInterval(fetchCloudLogs, 2500); setInterval(() => { const el = document.getElementById('conn-detail'); if (!lastSuccessfulFetch) return; const s = Math.floor((Date.now() - lastSuccessfulFetch) / 1000); el.textContent = s < 4 ? 'Atualizado agora' : (s < 15 ? `Atualizado há ${s}s` : `SEM SINAL HÁ ${s}s`); el.className = s < 15 ? 'text-[10px] text-gray-600 mt-1' : 'text-[10px] text-amber-500 mt-1 font-bold'; }, 1000);
+            setInterval(() => { if (session) { fetchComandos(); fetchMarcadores(); } }, 3000); setInterval(fetchConfig, 8000); setInterval(processarFilaEscritas, 5000); window.addEventListener('online', processarFilaEscritas);
+        }
+
+        bootDashboard();
+        if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+    </script>
+</body>
+</html>
