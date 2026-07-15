@@ -21,7 +21,7 @@
         .log-entry { animation: fade-in 0.35s ease-out; }
         @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* Modo noturno */
+        /* Modo noturno: filtro de verdade (preserva visão noturna), não um overlay escuro */
         body.modo-noturno { filter: grayscale(0.25) sepia(1) hue-rotate(-50deg) saturate(6) brightness(0.65); transition: filter 0.3s ease; }
 
         .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; touch-action: none; cursor: pointer; }
@@ -33,12 +33,14 @@
         .map-node.inactive-red { background-color: rgba(239, 68, 68, 0.85); border-color: #f87171; box-shadow: 0 0 15px #ef4444; color: #fff; }
         .map-node.offline { background-color: rgba(31, 41, 55, 0.85); border-color: #4b5563; color: #9ca3af; }
 
-        button:focus-visible, label:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
+        button:focus-visible, label:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+            outline: 2px solid #4ade80; outline-offset: 2px;
+        }
     </style>
 </head>
 <body class="bg-chiral min-h-screen p-2 md:p-4">
 
-    <!-- Modais -->
+    <!-- Caixa de Mensagem Modal (genérica) -->
     <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center shadow-2xl max-w-sm mx-4">
             <h3 class="text-xl text-yellow-500 mb-2 font-bold">AVISO TÁTICO</h3>
@@ -47,6 +49,7 @@
         </div>
     </div>
 
+    <!-- Login (admin / comandante / jogador) -->
     <div id="login-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
             <h3 class="text-xl text-red-500 mb-4 font-bold text-center">ACESSO RESTRITO</h3>
@@ -60,6 +63,7 @@
         </div>
     </div>
 
+    <!-- Painel de contas (admin) -->
     <div id="contas-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-md mx-4 w-full max-h-[85vh] overflow-y-auto">
             <h3 class="text-lg text-gray-200 mb-4 font-bold text-center">CONTAS DE ACESSO</h3>
@@ -68,6 +72,7 @@
         </div>
     </div>
 
+    <!-- Ordem tática (comandante) -->
     <div id="ordem-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-xs mx-4 w-full text-center">
             <h3 id="ordem-titulo" class="text-lg text-gray-200 mb-4 font-bold">NÓ 1</h3>
@@ -80,6 +85,7 @@
         </div>
     </div>
 
+    <!-- Histórico de ordens -->
     <div id="historico-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full max-h-[80vh] flex flex-col">
             <h3 class="text-lg text-gray-200 mb-3 font-bold text-center">HISTÓRICO DE ORDENS</h3>
@@ -88,8 +94,8 @@
         </div>
     </div>
 
+    <!-- Toast (aviso rápido) -->
     <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-[70] bg-gray-900 border border-green-600 text-green-300 text-xs px-4 py-2 rounded-full shadow-lg transition-opacity"></div>
-    <div id="modo-noturno-overlay" class="hidden fixed inset-0 z-[65] pointer-events-none" style="background:#200; mix-blend-mode:multiply;"></div>
 
     <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4 relative">
         <button id="btn-fullscreen" title="Ecrã inteiro" class="absolute right-0 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">⛶</button>
@@ -97,14 +103,20 @@
         <button id="btn-wakelock" onclick="toggleWakeLock()" title="Manter tela ligada" class="absolute right-16 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">💡</button>
         <button id="btn-login" onclick="openLoginModal()" title="Entrar" class="absolute left-0 top-0 text-gray-500 hover:text-white text-xs px-2 py-1 border border-gray-700 rounded">🔒 ENTRAR</button>
         <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider">[ COMANDO QUIRAL ]</h1>
-        <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">A ESTABELECER LIGAÇÃO...</div>
+        <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">
+            A ESTABELECER LIGAÇÃO...
+        </div>
         <div id="conn-detail" class="text-[10px] text-gray-600 mt-1"></div>
         <div id="fila-indicador" class="hidden text-[10px] text-amber-500 mt-1 font-bold"></div>
         <div id="session-badge" class="hidden mt-2 text-xs"></div>
     </header>
 
+    <!-- Main Dashboard -->
     <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+
+        <!-- COLUNA ESQUERDA: Placar e Mapa -->
         <div class="lg:col-span-2 space-y-4 md:space-y-6">
+
             <!-- Placar -->
             <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg shadow-lg relative overflow-hidden">
                 <div class="flex justify-between items-center relative z-10">
@@ -133,8 +145,13 @@
                         <button id="btn-exportar" onclick="exportarLog()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">EXPORTAR</button>
                         <button id="btn-salvar-layout" onclick="salvarLayout()" class="hidden bg-green-900 hover:bg-green-800 text-xs text-green-200 px-3 py-1 rounded border border-green-600 transition-colors">SALVAR LAYOUT</button>
                         <button id="btn-reset-logs" class="hidden bg-red-950 hover:bg-red-900 text-xs text-red-300 px-3 py-1 rounded border border-red-800 transition-colors">LIMPAR REGISTOS</button>
-                        <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">CONTAS</button>
-                        <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">IMPORTAR MAPA<input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden"></label>
+                        <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">
+                            CONTAS
+                        </button>
+                        <label id="btn-upload" class="cursor-pointer bg-blue-900 hover:bg-blue-800 text-xs text-white px-3 py-1 rounded border border-blue-700 transition-colors hidden">
+                            IMPORTAR MAPA
+                            <input type="file" id="map-upload" accept="image/jpeg, image/png" class="hidden">
+                        </label>
                     </div>
                 </div>
 
@@ -143,10 +160,9 @@
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none text-center px-6">
                         Aguardando sincronização de mapa da nuvem...
                     </div>
-                    <div id="map-nodes-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
-                    <div id="map-marcadores-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
+                    <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
+                    <div id="map-marcadores-layer" class="absolute inset-0 z-10"></div>
                 </div>
-                
                 <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós para reposicionar e depois toque em "SALVAR LAYOUT" para publicar as novas posições para todos.</p>
                 <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mt-2 text-center">Toque em qualquer ponto vazio do mapa para colocar um marcador da sua equipa.</p>
 
@@ -165,14 +181,15 @@
                 </details>
             </div>
 
-            <!-- Radar Clássico -->
+            <!-- Radar Clássico (Grelha) -->
             <div class="bg-gray-900/50 border border-gray-800 p-3 rounded-lg">
                 <h2 class="text-xs text-gray-500 mb-2 font-bold text-center">RADAR CLÁSSICO</h2>
-                <div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2"></div>
+                <div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2">
+                </div>
             </div>
         </div>
 
-        <!-- COLUNA DIREITA: Registo de Combate -->
+        <!-- COLUNA DIREITA: Registo de Combate (Logs na Nuvem) -->
         <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] lg:h-auto relative">
             <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
                 <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
@@ -181,15 +198,19 @@
                 </h2>
                 <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
             </div>
+
             <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans">
                 <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
             </div>
+
             <button id="jump-latest" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 bg-green-700 hover:bg-green-600 text-[11px] px-3 py-1 rounded-full shadow-lg border border-green-400">Novos registos ↓</button>
+
             <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500">
                 <span>UPLINK: <span id="last-update" class="text-green-500">--</span></span>
                 <span>DB: FIREBASE_RTDB</span>
             </div>
         </div>
+
     </main>
 
     <script>
@@ -197,17 +218,28 @@
         // CONFIGURAÇÃO E ESTADO GLOBAL
         // =====================================
         const FIREBASE_BASE = "https://quiral-f97a2-default-rtdb.firebaseio.com";
-        const GAME_URL       = FIREBASE_BASE + "/quiral.json";           
-        const CONFIG_URL     = FIREBASE_BASE + "/quiral_config.json";    
-        const LOGS_URL       = FIREBASE_BASE + "/quiral_logs.json";      
-        const AUTH_URL       = FIREBASE_BASE + "/quiral_auth.json";      
-        const COMANDOS_URL   = FIREBASE_BASE + "/quiral_comandos.json";  
-        const ORDENS_LOG_URL = FIREBASE_BASE + "/quiral_ordens_log.json";
+        const GAME_URL       = FIREBASE_BASE + "/quiral.json";           // estado do jogo — escrito pela central ESP32
+        const CONFIG_URL     = FIREBASE_BASE + "/quiral_config.json";    // posições dos nós + mapa + marcadores — escrito por esta página
+        const LOGS_URL       = FIREBASE_BASE + "/quiral_logs.json";      // registo de combate — escrito por qualquer espectador
+        const AUTH_URL       = FIREBASE_BASE + "/quiral_auth.json";      // contas (usuário + hash de senha) — só lido/escrito por esta página
+        const COMANDOS_URL   = FIREBASE_BASE + "/quiral_comandos.json";  // ordens de ataque/defesa por equipa
+        const ORDENS_LOG_URL = FIREBASE_BASE + "/quiral_ordens_log.json";// histórico de ordens emitidas por equipa
 
-        const ORDEM_EXPIRA_MIN = 10; 
+        const ORDEM_EXPIRA_MIN = 10; // ordens somem sozinhas depois de N minutos
+
+        // ATENÇÃO: sem um backend próprio, isto trava o acesso pela INTERFACE do site
+        // (jogador comum não vai ver nem editar nada disso), mas não é criptograficamente
+        // à prova de alguém técnico lendo as requisições de rede diretamente. Para esse
+        // nível de jogo de campo, isso é suficiente — só não trate como segurança forte.
 
         const ROLE_KEYS = ['admin', 'comandante_azul', 'jogador_azul', 'comandante_amarelo', 'jogador_amarelo'];
-        const ROLE_LABELS = { admin: 'Administrador', comandante_azul: 'Comandante Azul', jogador_azul: 'Jogador Azul', comandante_amarelo: 'Comandante Amarelo', jogador_amarelo: 'Jogador Amarelo' };
+        const ROLE_LABELS = {
+            admin: 'Administrador',
+            comandante_azul: 'Comandante Azul',
+            jogador_azul: 'Jogador Azul',
+            comandante_amarelo: 'Comandante Amarelo',
+            jogador_amarelo: 'Jogador Amarelo'
+        };
         function roleTeamOf(key) { return key.endsWith('_azul') ? 'azul' : key.endsWith('_amarelo') ? 'amarelo' : null; }
         function roleTypeOf(key) { return key.startsWith('comandante') ? 'comandante' : key.startsWith('jogador') ? 'jogador' : 'admin'; }
 
@@ -215,26 +247,46 @@
         try { session = JSON.parse(sessionStorage.getItem('quiral_session')); } catch (err) {}
         let isAdmin = !!(session && session.role === 'admin');
 
-        let lastGameState = null; let lastFullData = null; let lastNodesData = null;
-        let lastScoreAzul = 0; let lastScoreAmarelo = 0; let lastSuccessfulFetch = 0;
-        let currentNodeCount = 0; let nodePositions = {}; let marcadoresAtuais = {};   
-        let comandosAtuais = {}; let comandosAnteriores = null; let ordemNodeAlvo = null;    
-        let colocandoMarcador = false; let wakeLock = null; const renderedLogKeys = new Set();
+        let lastGameState = null;
+        let lastFullData = null;
+        let lastNodesData = null;
+        let lastScoreAzul = 0;
+        let lastScoreAmarelo = 0;
+        let lastSuccessfulFetch = 0;
+        let currentNodeCount = 0;
+        let nodePositions = {};
+        let marcadoresAtuais = {};   // marcadores livres da equipa: { [chave]: {x,y,label,ts,autor} }
+        let comandosAtuais = {};     // ordens da equipa do usuário logado: { azul: {...}, amarelo: {...} }
+        let comandosAnteriores = null; // snapshot da última leitura, pra detectar ordens NOVAS e notificar
+        let ordemNodeAlvo = null;    // nó selecionado no modal de ordem
+        let colocandoMarcador = false;
+        let wakeLock = null;
+        const renderedLogKeys = new Set();
 
         // =====================================
-        // FILA DE RETRY E HELPERS
+        // FILA DE RETRY (sincroniza sozinho quando a rede volta)
         // =====================================
         let filaEscritas = [];
         try { filaEscritas = JSON.parse(localStorage.getItem('quiral_fila') || '[]'); } catch (err) { filaEscritas = []; }
 
-        function salvarFila() { localStorage.setItem('quiral_fila', JSON.stringify(filaEscritas)); atualizarIndicadorFila(); }
+        function salvarFila() {
+            localStorage.setItem('quiral_fila', JSON.stringify(filaEscritas));
+            atualizarIndicadorFila();
+        }
+
         function atualizarIndicadorFila() {
             const el = document.getElementById('fila-indicador');
             if (!el) return;
-            if (filaEscritas.length > 0) { el.textContent = `⏳ ${filaEscritas.length} alteração(ões) aguardando conexão`; el.classList.remove('hidden'); } 
-            else { el.classList.add('hidden'); }
+            if (filaEscritas.length > 0) {
+                el.textContent = `⏳ ${filaEscritas.length} alteração(ões) aguardando conexão para sincronizar`;
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
         }
 
+        // Toda escrita importante passa por aqui: se falhar (sem sinal), entra na fila
+        // e localStorage garante que sobrevive até a um reload da página.
         async function escreverComRetry(url, opts, descricao) {
             try {
                 const res = await fetch(url, opts);
@@ -242,7 +294,8 @@
                 return true;
             } catch (err) {
                 filaEscritas.push({ url, opts, descricao: descricao || '', tentativas: 0 });
-                salvarFila(); return false;
+                salvarFila();
+                return false;
             }
         }
 
@@ -255,80 +308,141 @@
                     if (!res.ok) throw new Error('status ' + res.status);
                 } catch (err) {
                     item.tentativas = (item.tentativas || 0) + 1;
-                    if (item.tentativas < 40) restantes.push(item);
+                    if (item.tentativas < 40) restantes.push(item); // ~3min de tentativas antes de desistir
                 }
             }
             const tinhaAlgo = filaEscritas.length > 0;
-            filaEscritas = restantes; salvarFila();
+            filaEscritas = restantes;
+            salvarFila();
             if (tinhaAlgo && filaEscritas.length === 0) mostrarToast('✔ Tudo sincronizado com a nuvem.');
         }
 
+        // =====================================
+        // TOAST (aviso rápido, não bloqueante)
+        // =====================================
         let toastTimer = null;
         function mostrarToast(texto) {
-            const el = document.getElementById('toast'); el.textContent = texto; el.classList.remove('hidden', 'opacity-0');
+            const el = document.getElementById('toast');
+            el.textContent = texto;
+            el.classList.remove('hidden', 'opacity-0');
             clearTimeout(toastTimer);
             toastTimer = setTimeout(() => { el.classList.add('opacity-0'); setTimeout(() => el.classList.add('hidden'), 300); }, 4000);
         }
 
-        function toFirebaseKeyed(obj) { const out = {}; Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; }); return out; }
+        // O Firebase RTDB converte automaticamente um objeto em ARRAY se todas as
+        // chaves forem numéricas (ex: {"1":..,"2":..}), preenchendo os "buracos"
+        // com null. Isso quebra qualquer forEach que não espera null no meio.
+        // Solução: nunca usar o id do nó puro como chave — sempre prefixado.
+        function toFirebaseKeyed(obj) {
+            const out = {};
+            Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; });
+            return out;
+        }
         function fromFirebaseKeyed(raw) {
-            const out = {}; if (!raw) return out;
-            Object.keys(raw).forEach(k => { if (raw[k] == null) return; const id = String(k).replace(/^n/, ''); out[id] = raw[k]; });
+            const out = {};
+            if (!raw) return out;
+            Object.keys(raw).forEach(k => {
+                if (raw[k] == null) return; // ignora buracos que viraram null num array
+                const id = String(k).replace(/^n/, '');
+                out[id] = raw[k];
+            });
             return out;
         }
 
+        // =====================================
+        // CRIPTOGRAFIA SIMPLES (SHA-256) PARA AS SENHAS
+        // =====================================
         async function sha256(texto) {
             const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
             return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
+        // =====================================
+        // MODAL GENÉRICO
+        // =====================================
         function showModal(title, html) {
-            document.querySelector('#modal-box h3').innerText = title; document.getElementById('modal-text').innerHTML = html;
-            const box = document.getElementById('modal-box'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            document.querySelector('#modal-box h3').innerText = title;
+            document.getElementById('modal-text').innerHTML = html;
+            const box = document.getElementById('modal-box');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
         }
         function closeModal() {
-            const box = document.getElementById('modal-box'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200);
+            const box = document.getElementById('modal-box');
+            box.classList.add('opacity-0');
+            setTimeout(() => box.classList.add('hidden'), 200);
         }
 
         // =====================================
-        // LOGIN / SESSÃO
+        // LOGIN / SESSÃO (admin, comandante, jogador)
         // =====================================
         function openLoginModal() {
             if (session) { logout(); return; }
-            document.getElementById('login-user').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden');
-            const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); document.getElementById('login-user').focus();
+            document.getElementById('login-user').value = '';
+            document.getElementById('login-pass').value = '';
+            document.getElementById('login-erro').classList.add('hidden');
+            const box = document.getElementById('login-modal');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            document.getElementById('login-user').focus();
         }
-        function closeLoginModal() { const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+        function closeLoginModal() {
+            const box = document.getElementById('login-modal');
+            box.classList.add('opacity-0');
+            setTimeout(() => box.classList.add('hidden'), 200);
+        }
 
         async function tentarLogin(userDigitado, senha) {
-            const res = await fetch(AUTH_URL + '?nocache=' + Date.now()); const contas = (await res.json()) || {}; const hash = await sha256(senha);
+            const res = await fetch(AUTH_URL + '?nocache=' + Date.now());
+            const contas = (await res.json()) || {};
+            const hash = await sha256(senha);
+
+            // Bootstrap: enquanto ninguém configurou a conta admin, aceita o padrão de fábrica
+            // e já grava a versão definitiva (com hash) no banco.
             if (!contas.admin) {
                 const hashPadrao = await sha256('quiral2026');
                 if (userDigitado.toLowerCase() === 'admin' && hash === hashPadrao) {
                     const conta = { user: 'admin', passHash: hashPadrao, role: 'admin', team: null, label: ROLE_LABELS.admin };
-                    await fetch(FIREBASE_BASE + '/quiral_auth/admin.json', { method: 'PUT', body: JSON.stringify(conta) }); return conta;
+                    await fetch(FIREBASE_BASE + '/quiral_auth/admin.json', { method: 'PUT', body: JSON.stringify(conta) });
+                    return conta;
                 }
             }
+
             for (const key of ROLE_KEYS) {
                 const conta = contas[key];
-                if (conta && conta.user && conta.user.toLowerCase() === userDigitado.toLowerCase() && conta.passHash === hash) return conta;
+                if (conta && conta.user && conta.user.toLowerCase() === userDigitado.toLowerCase() && conta.passHash === hash) {
+                    return conta;
+                }
             }
             return null;
         }
 
         async function autenticar() {
-            const u = document.getElementById('login-user').value.trim(); const p = document.getElementById('login-pass').value; if (!u || !p) return;
+            const u = document.getElementById('login-user').value.trim();
+            const p = document.getElementById('login-pass').value;
+            if (!u || !p) return;
             const conta = await tentarLogin(u, p);
             if (conta) {
                 session = { role: conta.role, team: conta.team || null, label: conta.label || conta.user, user: conta.user };
-                sessionStorage.setItem('quiral_session', JSON.stringify(session)); closeLoginModal(); applySessionUI(); fetchComandos(); fetchMarcadores();
-            } else { document.getElementById('login-erro').classList.remove('hidden'); }
+                sessionStorage.setItem('quiral_session', JSON.stringify(session));
+                closeLoginModal();
+                applySessionUI();
+                fetchComandos();
+                fetchMarcadores();
+            } else {
+                document.getElementById('login-erro').classList.remove('hidden');
+            }
         }
 
-        function logout() { session = null; sessionStorage.removeItem('quiral_session'); applySessionUI(); }
+        function logout() {
+            session = null;
+            sessionStorage.removeItem('quiral_session');
+            applySessionUI();
+        }
 
         function applySessionUI() {
             isAdmin = !!(session && session.role === 'admin');
+
             document.getElementById('btn-upload').classList.toggle('hidden', !isAdmin);
             document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin);
@@ -337,54 +451,66 @@
             document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-marcador').classList.toggle('hidden', !(session && session.role === 'comandante'));
             document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
-            const loginBtn = document.getElementById('btn-login'); const badge = document.getElementById('session-badge');
+
+            const loginBtn = document.getElementById('btn-login');
+            const badge = document.getElementById('session-badge');
             if (session) {
-                loginBtn.textContent = 'SAIR'; const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
-                badge.className = 'mt-2 text-xs ' + cor; badge.textContent = 'Conectado: ' + (session.label || session.user); badge.classList.remove('hidden');
+                loginBtn.textContent = 'SAIR';
+                const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
+                badge.className = 'mt-2 text-xs ' + cor;
+                badge.textContent = 'Conectado: ' + (session.label || session.user);
+                badge.classList.remove('hidden');
             } else {
-                loginBtn.textContent = '🔒 ENTRAR'; badge.classList.add('hidden'); comandosAtuais = {}; marcadoresAtuais = {}; renderMarcadores();
+                loginBtn.textContent = '🔒 ENTRAR';
+                badge.classList.add('hidden');
+                comandosAtuais = {};
+                marcadoresAtuais = {};
+                renderMarcadores();
             }
+
             document.querySelectorAll('.map-node').forEach(el => el.classList.toggle('admin-mode', isAdmin));
             renderComandosOverlay();
         }
 
         // =====================================
-        // MAPA: LÓGICA DE CLIQUE E ARRASTO (NOVA VERSÃO TOUCH-FRIENDLY)
+        // MAPA: POSIÇÕES, CRIAÇÃO DE NÓS E DRAG
         // =====================================
         function defaultPosition(id, total) {
-            const cols = Math.ceil(Math.sqrt(total)); const rows = Math.ceil(total / cols); const idx = id - 1;
-            return { x: (((idx % cols) + 0.5) / cols) * 100, y: ((Math.floor(idx / cols) + 0.5) / rows) * 100 };
+            const cols = Math.ceil(Math.sqrt(total));
+            const rows = Math.ceil(total / cols);
+            const idx = id - 1;
+            const col = idx % cols, row = Math.floor(idx / cols);
+            return { x: ((col + 0.5) / cols) * 100, y: ((row + 0.5) / rows) * 100 };
         }
 
         function ensureNodeElements(n) {
-            if (n === currentNodeCount) return; currentNodeCount = n;
-            const layer = document.getElementById('map-nodes-layer'); layer.innerHTML = '';
-            
-            // Garantir que as camadas não bloqueiam toques e que os nós recebem os eventos
-            layer.style.pointerEvents = 'none';
-            document.getElementById('map-marcadores-layer').style.pointerEvents = 'none';
-
+            if (n === currentNodeCount) return;
+            currentNodeCount = n;
+            const layer = document.getElementById('map-nodes-layer');
+            layer.innerHTML = '';
             for (let i = 1; i <= n; i++) {
-                const el = document.createElement('div'); el.id = `map-node-${i}`; el.textContent = i;
+                const el = document.createElement('div');
+                el.id = `map-node-${i}`;
+                el.textContent = i;
                 const pos = nodePositions[i] || defaultPosition(i, n);
-                el.style.left = pos.x + '%'; el.style.top = pos.y + '%';
-                
-                // CLASSES FUNDAMENTAIS PARA PERMITIR INTERAÇÃO: pointer-events-auto E touch-none
-                el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline pointer-events-auto touch-none select-none' + (isAdmin ? ' admin-mode' : '');
-                
-                const badgeAzul = document.createElement('span'); badgeAzul.id = `ordem-badge-azul-${i}`;
+                el.style.left = pos.x + '%';
+                el.style.top = pos.y + '%';
+                el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline' + (isAdmin ? ' admin-mode' : '');
+                const badgeAzul = document.createElement('span');
+                badgeAzul.id = `ordem-badge-azul-${i}`;
                 badgeAzul.className = 'ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300';
                 el.appendChild(badgeAzul);
-                
-                const badgeAmarelo = document.createElement('span'); badgeAmarelo.id = `ordem-badge-amarelo-${i}`;
+                const badgeAmarelo = document.createElement('span');
+                badgeAmarelo.id = `ordem-badge-amarelo-${i}`;
                 badgeAmarelo.className = 'ordem-badge hidden absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-yellow-300';
                 el.appendChild(badgeAmarelo);
-                
-                attachNodeInteraction(el, i); layer.appendChild(el);
+                attachNodeInteraction(el, i);
+                layer.appendChild(el);
             }
         }
 
         let layoutPendente = false;
+        let arrastandoAgora = false;
 
         function marcarLayoutPendente() {
             layoutPendente = true;
@@ -410,76 +536,41 @@
         }
 
         function attachNodeInteraction(el, id) {
-            let dragging = false, moved = false;
-            let startX = 0, startY = 0;
-            
-            // FUNÇÕES PARA TRATAR COORDENADAS SEJA TOUCH OU MOUSE
-            const getX = (e) => e.touches ? e.touches[0].clientX : e.clientX;
-            const getY = (e) => e.touches ? e.touches[0].clientY : e.clientY;
-
-            const handleStart = (e) => {
-                if (!isAdmin) return; // Apenas admin pode arrastar
-                startX = getX(e);
-                startY = getY(e);
-                moved = false;
-                dragging = true;
-            };
-
-            const handleMove = (e) => {
-                if (!dragging || !isAdmin) return;
-                
-                const currentX = getX(e);
-                const currentY = getY(e);
-                
-                // Se moveu mais de 5 pixels, considera como um "arrasto" e não "clique"
-                if (Math.abs(currentX - startX) > 5 || Math.abs(currentY - startY) > 5) {
-                    moved = true;
-                }
-
-                if (moved) {
-                    e.preventDefault(); // Impede o scroll da página durante o arrasto no mobile
-                    const rect = document.getElementById('map-container').getBoundingClientRect();
-                    let x = ((currentX - rect.left) / rect.width) * 100;
-                    let y = ((currentY - rect.top) / rect.height) * 100;
-                    
-                    x = Math.max(1, Math.min(99, x));
-                    y = Math.max(1, Math.min(99, y));
-                    
-                    el.style.left = x + '%';
-                    el.style.top = y + '%';
-                }
-            };
-
-            const handleEnd = (e) => {
+            let dragging = false, moved = false, startX = 0, startY = 0;
+            el.addEventListener('pointerdown', (e) => {
+                startX = e.clientX; startY = e.clientY; moved = false;
                 if (!isAdmin) return;
-                dragging = false;
-                if (moved) {
-                    const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
-                    nodePositions[id] = { x, y };
-                    marcarLayoutPendente();
-                }
-                // Importante: Não disparamos o click aqui, deixamos o evento nativo (abaixo) tratar disso se for um toque simples
-            };
-
-            // Eventos Mouse (PC)
-            el.addEventListener('mousedown', handleStart);
-            document.addEventListener('mousemove', handleMove); // Ouve no document para não "perder" a bolinha se o rato for rápido
-            document.addEventListener('mouseup', handleEnd);
-
-            // Eventos Touch (Telemóvel)
-            el.addEventListener('touchstart', handleStart, { passive: false });
-            el.addEventListener('touchmove', handleMove, { passive: false });
-            el.addEventListener('touchend', handleEnd);
-
-            // Clique puro (Para abrir as ordens - funciona bem no mobile porque não cancelámos o e.preventDefault se não houve "moved")
-            el.addEventListener('click', (e) => {
-                if (moved && isAdmin) {
-                    moved = false; // Foi um arrasto, ignora o menu
-                    return; 
-                }
-                onNodeTap(id);
+                dragging = true;
+                arrastandoAgora = true;
+                el.setPointerCapture(e.pointerId);
             });
+            el.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) moved = true;
+                const rect = document.getElementById('map-container').getBoundingClientRect();
+                let x = ((e.clientX - rect.left) / rect.width) * 100;
+                let y = ((e.clientY - rect.top) / rect.height) * 100;
+                x = Math.max(1, Math.min(99, x));
+                y = Math.max(1, Math.min(99, y));
+                el.style.left = x + '%';
+                el.style.top = y + '%';
+            });
+            el.addEventListener('pointerup', () => {
+                if (dragging) {
+                    dragging = false;
+                    arrastandoAgora = false;
+                    if (moved) {
+                        const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
+                        nodePositions[id] = { x, y };
+                        marcarLayoutPendente();
+                        return;
+                    }
+                }
+                if (!moved) onNodeTap(id);
+            });
+            el.addEventListener('pointercancel', () => { dragging = false; arrastandoAgora = false; });
         }
+
 
         function onNodeTap(id) {
             if (session && session.role === 'comandante') { openOrdemModal(id); return; }
@@ -490,17 +581,29 @@
             const node = (lastFullData && lastFullData.nos && lastFullData.nos[id - 1]) || null;
             if (!node) { showModal('NÓ ' + id, 'Sem dados disponíveis ainda.'); return; }
             const isQuiral = lastFullData.md === 'QUIRAL';
-            let estado = node.online ? '<span class="text-green-400">EM LINHA</span>' : '<span class="text-red-400">OFFLINE</span>'; let extra = '';
+            let estado = node.online ? '<span class="text-green-400">EM LINHA</span>' : '<span class="text-red-400">OFFLINE</span>';
+            let extra = '';
             if (node.online) {
                 if (isQuiral) extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>';
                 else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>';
+                // Campos opcionais — só aparecem se o firmware enviar (bateria/rssi ainda não são enviados hoje)
+                if (node.bateria !== undefined && node.bateria !== null) {
+                    extra += `<br><span class="text-[10px] text-gray-500">Bateria: ${node.bateria}%</span>`;
+                }
+                if (node.rssi !== undefined && node.rssi !== null) {
+                    extra += `<br><span class="text-[10px] text-gray-500">Sinal: ${node.rssi} dBm</span>`;
+                }
             }
             let ordemInfo = '';
             if (session) {
                 const linhas = [];
                 ['azul', 'amarelo'].forEach(team => {
                     const o = comandosAtuais[team] && comandosAtuais[team][id];
-                    if (o) linhas.push(`<span class="${team === 'azul' ? 'text-blue-400' : 'text-yellow-400'} font-bold">${team.toUpperCase()}</span>: ` + (o.ordem === 'atacar' ? '<span class="text-red-400 font-bold">⚔ ATACAR</span>' : '<span class="text-blue-300 font-bold">🛡 DEFENDER</span>'));
+                    if (o) {
+                        const corTeam = team === 'azul' ? 'text-blue-400' : 'text-yellow-400';
+                        const nomeTeam = team === 'azul' ? 'AZUL' : 'AMARELA';
+                        linhas.push(`<span class="${corTeam} font-bold">${nomeTeam}</span>: ` + (o.ordem === 'atacar' ? '<span class="text-red-400 font-bold">⚔ ATACAR</span>' : '<span class="text-blue-300 font-bold">🛡 DEFENDER</span>'));
+                    }
                 });
                 if (linhas.length) ordemInfo = '<br><br><span class="text-[10px] text-gray-500">Ordens:</span><br>' + linhas.join('<br>');
             }
@@ -509,24 +612,33 @@
         }
 
         // =====================================
-        // ORDENS TÁTICAS 
+        // ORDENS TÁTICAS (comandante emite, sua equipa vê)
         // =====================================
         function openOrdemModal(id) {
-            ordemNodeAlvo = id; document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
-            const box = document.getElementById('ordem-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            ordemNodeAlvo = id;
+            document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
+            const box = document.getElementById('ordem-modal');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
         }
-        function closeOrdemModal() { const box = document.getElementById('ordem-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); ordemNodeAlvo = null; }
-
+        function closeOrdemModal() {
+            const box = document.getElementById('ordem-modal');
+            box.classList.add('opacity-0');
+            setTimeout(() => box.classList.add('hidden'), 200);
+            ordemNodeAlvo = null;
+        }
         async function emitirOrdem(tipo) {
             if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
-            const id = ordemNodeAlvo; const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
+            const id = ordemNodeAlvo;
+            const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
             if (tipo) {
                 await escreverComRetry(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) }, `Ordem nó ${id}`);
                 registrarHistoricoOrdem(id, tipo);
             } else {
                 await escreverComRetry(path, { method: 'DELETE' }, `Cancelar ordem nó ${id}`);
             }
-            await fetchComandos(); closeOrdemModal();
+            await fetchComandos();
+            closeOrdemModal();
         }
 
         function registrarHistoricoOrdem(id, tipo) {
@@ -545,8 +657,8 @@
         }
 
         function detectarOrdensNovasENotificar(anterior, atual) {
-            if (!anterior) return; 
-            if (session && session.role === 'comandante') return; 
+            if (!anterior) return; // primeira leitura da sessão, não notifica retroativo
+            if (session && session.role === 'comandante') return; // ele já sabe, foi ele quem emitiu
             let novas = 0;
             ['azul', 'amarelo'].forEach(team => {
                 const antes = anterior[team] || {};
@@ -567,7 +679,7 @@
                 gain.gain.setValueAtTime(0.08, ctx.currentTime);
                 osc.connect(gain); gain.connect(ctx.destination);
                 osc.start(); osc.stop(ctx.currentTime + 0.15);
-            } catch (err) { }
+            } catch (err) { /* Web Audio indisponível, tudo bem */ }
         }
 
         async function fetchComandos() {
@@ -602,7 +714,7 @@
                 const ordens = comandosAtuais[team] || {};
                 Object.keys(ordens).forEach(id => {
                     const o = ordens[id];
-                    if (!o || !o.ordem) return; 
+                    if (!o || !o.ordem) return; // ignora entradas inválidas/vazias sem travar o restante
                     const badge = document.getElementById(`ordem-badge-${team}-${id}`);
                     if (!badge) return;
                     badge.textContent = o.ordem === 'atacar' ? '⚔' : '🛡';
@@ -613,25 +725,30 @@
         }
 
         // =====================================
-        // MARCADORES LIVRES
+        // MARCADORES LIVRES (comandante coloca pra própria equipa ver)
         // =====================================
         function ativarModoMarcador() {
             if (!session || session.role !== 'comandante') return;
             colocandoMarcador = !colocandoMarcador;
             const btn = document.getElementById('btn-marcador');
             document.getElementById('marcador-hint').classList.toggle('hidden', !colocandoMarcador);
-            btn.classList.toggle('bg-purple-700', colocandoMarcador); btn.textContent = colocandoMarcador ? '📍 TOQUE NO MAPA...' : '📍 MARCADOR';
+            btn.classList.toggle('bg-purple-700', colocandoMarcador);
+            btn.textContent = colocandoMarcador ? '📍 TOQUE NO MAPA...' : '📍 MARCADOR';
         }
 
         function wireMapaClickParaMarcador() {
-            document.getElementById('map-container').addEventListener('click', (e) => {
+            document.getElementById('map-container').addEventListener('pointerup', (e) => {
                 if (!colocandoMarcador) return;
                 if (e.target.closest('.map-node') || e.target.closest('.marcador-pin')) return;
                 const rect = document.getElementById('map-container').getBoundingClientRect();
-                let x = Math.max(1, Math.min(99, ((e.clientX - rect.left) / rect.width) * 100));
-                let y = Math.max(1, Math.min(99, ((e.clientY - rect.top) / rect.height) * 100));
-                ativarModoMarcador(); 
-                const label = prompt('Nome do marcador (ex: "Reagrupar aqui"):'); if (label === null) return;
+                let x = ((e.clientX - rect.left) / rect.width) * 100;
+                let y = ((e.clientY - rect.top) / rect.height) * 100;
+                x = Math.max(1, Math.min(99, x));
+                y = Math.max(1, Math.min(99, y));
+
+                ativarModoMarcador(); // desliga o modo antes do prompt, pra não ficar preso se cancelar
+                const label = prompt('Nome do marcador (ex: "Reagrupar aqui"):');
+                if (label === null) return;
                 criarMarcador(x, y, label.trim() || 'Marcador');
             });
         }
@@ -680,9 +797,7 @@
                     if (!m) return;
                     const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
                     const pin = document.createElement('div');
-                    
-                    // CLASSES CRÍTICAS PARA PERMITIR CLIQUES E EVITAR ARRASTOS NO FUNDO DO MAPA
-                    pin.className = 'marcador-pin absolute -ml-3 -mt-6 flex flex-col items-center cursor-pointer select-none pointer-events-auto touch-none';
+                    pin.className = 'marcador-pin absolute -ml-3 -mt-6 flex flex-col items-center cursor-pointer select-none';
                     pin.style.left = m.x + '%';
                     pin.style.top = m.y + '%';
                     pin.innerHTML = `<span class="text-lg ${cor}">📍</span><span class="text-[9px] bg-black/70 ${cor} px-1 rounded whitespace-nowrap">${(m.label || '').slice(0, 20)}</span>`;
@@ -691,6 +806,111 @@
                 });
             });
         }
+
+        // =====================================
+        // HISTÓRICO DE ORDENS
+        // =====================================
+        async function openHistoricoModal() {
+            if (!session) return;
+            const box = document.getElementById('historico-modal');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            const lista = document.getElementById('historico-lista');
+            lista.innerHTML = '<p class="text-gray-500 text-center">Carregando...</p>';
+            try {
+                let entradas = [];
+                if (isAdmin) {
+                    const [ra, ry] = await Promise.all([
+                        fetch(`${FIREBASE_BASE}/quiral_ordens_log/azul.json?nocache=` + Date.now()),
+                        fetch(`${FIREBASE_BASE}/quiral_ordens_log/amarelo.json?nocache=` + Date.now())
+                    ]);
+                    const az = (await ra.json()) || {}, am = (await ry.json()) || {};
+                    entradas = [
+                        ...Object.values(az).map(e => ({ ...e, team: 'azul' })),
+                        ...Object.values(am).map(e => ({ ...e, team: 'amarelo' }))
+                    ];
+                } else if (session.team) {
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}.json?nocache=` + Date.now());
+                    const data = (await res.json()) || {};
+                    entradas = Object.values(data).map(e => ({ ...e, team: session.team }));
+                }
+                entradas = entradas.filter(Boolean).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                if (!entradas.length) { lista.innerHTML = '<p class="text-gray-500 text-center">Nenhuma ordem registada ainda.</p>'; return; }
+                lista.innerHTML = entradas.map(e => {
+                    const cor = e.team === 'azul' ? 'text-blue-400' : 'text-yellow-400';
+                    const icone = e.ordem === 'atacar' ? '⚔' : '🛡';
+                    const hora = e.ts ? new Date(e.ts).toLocaleTimeString('pt-PT', { hour12: false }) : '--:--:--';
+                    return `<div class="border-b border-gray-800 pb-1"><span class="text-gray-600">[${hora}]</span> <span class="${cor} font-bold">${e.team.toUpperCase()}</span> ${icone} Nó ${e.node} — <span class="text-gray-500">${e.autor || ''}</span></div>`;
+                }).join('');
+            } catch (err) {
+                console.error(err);
+                lista.innerHTML = '<p class="text-red-400 text-center">Erro ao carregar histórico.</p>';
+            }
+        }
+        function closeHistoricoModal() {
+            const box = document.getElementById('historico-modal');
+            box.classList.add('opacity-0');
+            setTimeout(() => box.classList.add('hidden'), 200);
+        }
+
+        // =====================================
+        // EXPORTAR REGISTO DE COMBATE
+        // =====================================
+        async function exportarLog() {
+            try {
+                const res = await fetch(LOGS_URL + '?nocache=' + Date.now());
+                const data = (await res.json()) || {};
+                const entradas = Object.values(data).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                const linhas = entradas.map(e => `[${e.t}] ${(e.m || '').replace(/<[^>]+>/g, '')}`);
+                const texto = linhas.length ? linhas.join('\n') : 'Sem registos nesta partida.';
+                const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `registo-combate-${new Date().toISOString().slice(0, 16).replace(':', '-')}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (err) {
+                console.error('Falha ao exportar registo', err);
+                mostrarToast('Falha ao exportar registo.');
+            }
+        }
+
+        // =====================================
+        // MODO NOTURNO / TELA SEMPRE LIGADA
+        // =====================================
+        function toggleModoNoturno(forcar) {
+            const novoEstado = typeof forcar === 'boolean' ? forcar : !document.body.classList.contains('modo-noturno');
+            document.body.classList.toggle('modo-noturno', novoEstado);
+            localStorage.setItem('quiral_modo_noturno', novoEstado ? '1' : '0');
+            document.getElementById('btn-noturno').classList.toggle('text-red-500', novoEstado);
+        }
+
+        async function toggleWakeLock() {
+            const btn = document.getElementById('btn-wakelock');
+            if (wakeLock) {
+                try { await wakeLock.release(); } catch (err) {}
+                wakeLock = null;
+                btn.classList.remove('text-yellow-400');
+                mostrarToast('Tela pode apagar normalmente agora.');
+                return;
+            }
+            if (!('wakeLock' in navigator)) { mostrarToast('Este navegador não suporta manter a tela ligada.'); return; }
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                btn.classList.add('text-yellow-400');
+                mostrarToast('Tela vai ficar ligada enquanto o painel estiver aberto.');
+                wakeLock.addEventListener('release', () => { wakeLock = null; btn.classList.remove('text-yellow-400'); });
+            } catch (err) {
+                console.error(err);
+                mostrarToast('Não foi possível manter a tela ligada (' + (err.name || err.message || 'erro desconhecido') + ').');
+            }
+        }
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+            }
+        });
 
         // =====================================
         // GESTÃO DE CONTAS (admin)
@@ -787,9 +1007,6 @@
             }
         }
 
-        // =====================================
-        // ATUALIZAÇÃO VISUAL: NODES NA TELA
-        // =====================================
         function renderVisuals(data) {
             const isQuiral = data.md === "QUIRAL";
             const miniGrid = document.getElementById('nodes-grid');
@@ -813,8 +1030,7 @@
 
                 const mapNode = document.getElementById(`map-node-${id}`);
                 if (mapNode) {
-                    // MANTEMOS A CLASSE POINTER-EVENTS-AUTO AQUI PARA GARANTIR QUE ELE É CLICÁVEL!
-                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto touch-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
+                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
                 }
 
                 miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
@@ -990,8 +1206,6 @@
             const isQuiral = newData.md === "QUIRAL";
             const currentAzul = parseInt(newData.az || 0);
             const currentAmarelo = parseInt(newData.am || 0);
-            const scoredBlue = currentAzul > lastScoreAzul;
-            const scoredYellow = currentAmarelo > lastScoreAmarelo;
             const tp = (newData.tp || '00:00').replace(':', '');
             const placar = ` <span class="text-gray-500">[${currentAzul}x${currentAmarelo}]</span>`;
 
@@ -1106,7 +1320,7 @@
                 const res = await fetch(CONFIG_URL + "?nocache=" + Date.now());
                 const data = await res.json();
                 if (!data) return;
-                if (data.positions && !layoutPendente) {
+                if (data.positions && !layoutPendente && !arrastandoAgora) {
                     nodePositions = fromFirebaseKeyed(data.positions);
                     // Se os nós do mapa já tiverem sido criados antes desta resposta chegar
                     // (corrida entre fetchConfig e fetchUplinkData), reposiciona os que já existem.
