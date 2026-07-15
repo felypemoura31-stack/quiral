@@ -160,8 +160,9 @@
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none text-center px-6">
                         Aguardando sincronização de mapa da nuvem...
                     </div>
-                    <div id="map-nodes-layer" class="absolute inset-0 z-10"></div>
-                    <div id="map-marcadores-layer" class="absolute inset-0 z-10"></div>
+                    <!-- AQUI FOI PERFURADO O ESCUDO DE VIDRO -->
+                    <div id="map-nodes-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
+                    <div id="map-marcadores-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
                 </div>
                 <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós para reposicionar e depois toque em "SALVAR LAYOUT" para publicar as novas posições para todos.</p>
                 <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mt-2 text-center">Toque em qualquer ponto vazio do mapa para colocar um marcador da sua equipa.</p>
@@ -495,7 +496,8 @@
                 const pos = nodePositions[i] || defaultPosition(i, n);
                 el.style.left = pos.x + '%';
                 el.style.top = pos.y + '%';
-                el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline' + (isAdmin ? ' admin-mode' : '');
+                // CLASSES FUNDAMENTAIS PARA PERMITIR INTERAÇÃO
+                el.className = 'map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs offline pointer-events-auto touch-none' + (isAdmin ? ' admin-mode' : '');
                 const badgeAzul = document.createElement('span');
                 badgeAzul.id = `ordem-badge-azul-${i}`;
                 badgeAzul.className = 'ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300';
@@ -510,7 +512,6 @@
         }
 
         let layoutPendente = false;
-        let arrastandoAgora = false;
 
         function marcarLayoutPendente() {
             layoutPendente = true;
@@ -535,40 +536,62 @@
             setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 1800);
         }
 
+        // --- SISTEMA BLINDADO DE TOUCH E ARRASTO ---
         function attachNodeInteraction(el, id) {
             let dragging = false, moved = false, startX = 0, startY = 0;
-            el.addEventListener('pointerdown', (e) => {
-                startX = e.clientX; startY = e.clientY; moved = false;
+
+            const onStart = (e) => {
+                moved = false;
                 if (!isAdmin) return;
                 dragging = true;
-                arrastandoAgora = true;
-                el.setPointerCapture(e.pointerId);
-            });
-            el.addEventListener('pointermove', (e) => {
-                if (!dragging) return;
-                if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) moved = true;
-                const rect = document.getElementById('map-container').getBoundingClientRect();
-                let x = ((e.clientX - rect.left) / rect.width) * 100;
-                let y = ((e.clientY - rect.top) / rect.height) * 100;
-                x = Math.max(1, Math.min(99, x));
-                y = Math.max(1, Math.min(99, y));
-                el.style.left = x + '%';
-                el.style.top = y + '%';
-            });
-            el.addEventListener('pointerup', () => {
-                if (dragging) {
-                    dragging = false;
-                    arrastandoAgora = false;
-                    if (moved) {
-                        const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
-                        nodePositions[id] = { x, y };
-                        marcarLayoutPendente();
-                        return;
-                    }
+                startX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+                startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+            };
+
+            const onMove = (e) => {
+                if (!dragging || !isAdmin) return;
+                let cx = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+                let cy = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+                if (Math.abs(cx - startX) > 5 || Math.abs(cy - startY) > 5) moved = true;
+                
+                if (moved) {
+                    if (e.cancelable) e.preventDefault(); 
+                    const rect = document.getElementById('map-container').getBoundingClientRect();
+                    let x = ((cx - rect.left) / rect.width) * 100;
+                    let y = ((cy - rect.top) / rect.height) * 100;
+                    el.style.left = Math.max(1, Math.min(99, x)) + '%';
+                    el.style.top = Math.max(1, Math.min(99, y)) + '%';
                 }
-                if (!moved) onNodeTap(id);
+            };
+
+            const onEnd = (e) => {
+                if (!isAdmin || !dragging) return;
+                dragging = false;
+                if (moved) {
+                    nodePositions[id] = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+                    marcarLayoutPendente();
+                }
+            };
+
+            // Eventos Mouse (PC)
+            el.addEventListener('mousedown', onStart);
+            window.addEventListener('mousemove', onMove, { passive: false });
+            window.addEventListener('mouseup', onEnd);
+
+            // Eventos Touch (Telemóvel)
+            el.addEventListener('touchstart', onStart, { passive: true });
+            window.addEventListener('touchmove', onMove, { passive: false });
+            window.addEventListener('touchend', onEnd);
+            window.addEventListener('touchcancel', onEnd);
+
+            // Clique puro garantido para menus
+            el.addEventListener('click', (e) => {
+                if (moved && isAdmin) {
+                    moved = false;
+                    return; 
+                }
+                onNodeTap(id);
             });
-            el.addEventListener('pointercancel', () => { dragging = false; arrastandoAgora = false; });
         }
 
 
@@ -737,7 +760,7 @@
         }
 
         function wireMapaClickParaMarcador() {
-            document.getElementById('map-container').addEventListener('pointerup', (e) => {
+            document.getElementById('map-container').addEventListener('click', (e) => {
                 if (!colocandoMarcador) return;
                 if (e.target.closest('.map-node') || e.target.closest('.marcador-pin')) return;
                 const rect = document.getElementById('map-container').getBoundingClientRect();
@@ -797,7 +820,8 @@
                     if (!m) return;
                     const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
                     const pin = document.createElement('div');
-                    pin.className = 'marcador-pin absolute -ml-3 -mt-6 flex flex-col items-center cursor-pointer select-none';
+                    // CLASSES FUNDAMENTAIS PARA PERMITIR INTERAÇÃO
+                    pin.className = 'marcador-pin absolute -ml-3 -mt-6 flex flex-col items-center cursor-pointer select-none pointer-events-auto touch-none';
                     pin.style.left = m.x + '%';
                     pin.style.top = m.y + '%';
                     pin.innerHTML = `<span class="text-lg ${cor}">📍</span><span class="text-[9px] bg-black/70 ${cor} px-1 rounded whitespace-nowrap">${(m.label || '').slice(0, 20)}</span>`;
@@ -1030,7 +1054,8 @@
 
                 const mapNode = document.getElementById(`map-node-${id}`);
                 if (mapNode) {
-                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
+                    // CLASSES FUNDAMENTAIS PARA PERMITIR INTERAÇÃO
+                    mapNode.className = `map-node absolute w-6 h-6 md:w-8 md:h-8 -ml-3 -mt-3 md:-ml-4 md:-mt-4 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto touch-none ${cssClass}` + (isAdmin ? ' admin-mode' : '');
                 }
 
                 miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold text-white/70">${id}</div>`;
@@ -1320,7 +1345,7 @@
                 const res = await fetch(CONFIG_URL + "?nocache=" + Date.now());
                 const data = await res.json();
                 if (!data) return;
-                if (data.positions && !layoutPendente && !arrastandoAgora) {
+                if (data.positions && !layoutPendente) {
                     nodePositions = fromFirebaseKeyed(data.positions);
                     // Se os nós do mapa já tiverem sido criados antes desta resposta chegar
                     // (corrida entre fetchConfig e fetchUplinkData), reposiciona os que já existem.
