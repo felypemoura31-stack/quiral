@@ -1313,17 +1313,23 @@
 
                 updateStatusBadge('ok', isPlaying);
 
-                if (isPlaying && lastGameState !== "ON") {
-                    await startNewMatchLogs();
-                } else if (!isPlaying && lastGameState === "ON") {
-                    const finalAzul = parseInt(data.az || 0);
-                    const finalAmarelo = parseInt(data.am || 0);
-                    let vencedor;
-                    if (finalAzul > finalAmarelo) vencedor = '<span class="text-blue-400 font-bold">EQUIPA AZUL VENCEU</span>';
-                    else if (finalAmarelo > finalAzul) vencedor = '<span class="text-yellow-400 font-bold">EQUIPA AMARELA VENCEU</span>';
-                    else vencedor = '<span class="text-gray-300 font-bold">EMPATE</span>';
-                    saveLogToCloud('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Placar final: <span class="text-gray-300">${finalAzul}x${finalAmarelo}</span> — ${vencedor}`);
+                // --- ESCUDO DE INICIALIZAÇÃO (BLINDAGEM DO F5) ---
+                if (lastGameState !== null) { 
+                    if (isPlaying && lastGameState !== "ON") {
+                        await startNewMatchLogs(); // Zera logs APENAS se transitar ao vivo de OFF para ON
+                    } else if (!isPlaying && lastGameState === "ON") {
+                        const finalAzul = parseInt(data.az || 0);
+                        const finalAmarelo = parseInt(data.am || 0);
+                        let vencedor;
+                        if (finalAzul > finalAmarelo) vencedor = '<span class="text-blue-400 font-bold">EQUIPA AZUL VENCEU</span>';
+                        else if (finalAmarelo > finalAzul) vencedor = '<span class="text-yellow-400 font-bold">EQUIPA AMARELA VENCEU</span>';
+                        else vencedor = '<span class="text-gray-300 font-bold">EMPATE</span>';
+                        saveLogToCloud('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Placar final: <span class="text-gray-300">${finalAzul}x${finalAmarelo}</span> — ${vencedor}`);
+                    }
                 }
+                
+                // Grava o estado lido nesta iteração para comparação futura
+                lastGameState = data.st;
 
                 if (data.nos && Array.isArray(data.nos)) {
                     ensureNodeElements(data.nos.length);
@@ -1332,8 +1338,6 @@
                     updateNodeCount(data.nos);
                     lastNodesData = JSON.parse(JSON.stringify(data.nos));
                 }
-
-                lastGameState = data.st;
             } catch (error) {
                 console.error("Uplink failed:", error);
                 updateStatusBadge('error');
@@ -1345,7 +1349,7 @@
                 const res = await fetch(CONFIG_URL + "?nocache=" + Date.now());
                 const data = await res.json();
                 if (!data) return;
-                if (data.positions && !layoutPendente) {
+                if (data.positions && !layoutPendente && !arrastandoAgora) {
                     nodePositions = fromFirebaseKeyed(data.positions);
                     // Se os nós do mapa já tiverem sido criados antes desta resposta chegar
                     // (corrida entre fetchConfig e fetchUplinkData), reposiciona os que já existem.
