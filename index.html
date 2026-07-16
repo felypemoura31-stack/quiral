@@ -19,7 +19,7 @@
         .log-container::-webkit-scrollbar { width: 6px; }
         .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         .log-entry { animation: fade-in 0.35s ease-out; }
-        @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
         /* Modo noturno */
         body.modo-noturno { filter: grayscale(0.25) sepia(1) hue-rotate(-50deg) saturate(6) brightness(0.65); transition: filter 0.3s ease; }
@@ -152,25 +152,24 @@
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm pointer-events-none text-center px-6">
                         Aguardando sincronização de mapa da nuvem...
                     </div>
-                    <!-- AQUI FOI PERFURADO O ESCUDO DE VIDRO -->
                     <div id="map-nodes-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
                     <div id="map-marcadores-layer" class="absolute inset-0 z-10 pointer-events-none"></div>
                 </div>
                 <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós para reposicionar e depois toque em "SALVAR LAYOUT" para publicar as novas posições para todos.</p>
-                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mt-2 text-center">Toque em qualquer ponto vazio do mapa para colocar um marcador da sua Equipe.</p>
+                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mt-2 text-center">Toque em qualquer ponto vazio do mapa para colocar um marcador da sua equipa.</p>
 
                 <details class="mt-3 text-xs text-gray-500">
                     <summary class="cursor-pointer select-none text-gray-400">Legenda do mapa</summary>
                     <div class="grid grid-cols-2 gap-2 mt-2 text-[11px]">
                         <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(34,197,94,.85)"></span> Ativo / dominado (verde)</div>
                         <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(239,68,68,.85)"></span> Capturado / neutralizado</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(59,130,246,.85)"></span> equipe Azul</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(234,179,8,.85)"></span> equipe Amarela</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(59,130,246,.85)"></span> Equipa Azul</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(234,179,8,.85)"></span> Equipa Amarela</div>
                         <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(255,255,255,.85)"></span> Neutro (Livre)</div>
                         <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(31,41,55,.85)"></span> Offline (Sem Sinal)</div>
                         <div class="flex items-center gap-2"><span class="w-4 h-4 rounded-full inline-flex items-center justify-center bg-red-600 text-[9px]">⚔</span> Ordem: atacar</div>
                         <div class="flex items-center gap-2"><span class="w-4 h-4 rounded-full inline-flex items-center justify-center bg-blue-600 text-[9px]">🛡</span> Ordem: defender</div>
-                        <div class="flex items-center gap-2"><span class="text-purple-400">📍</span> Marcador tático da equipe</div>
+                        <div class="flex items-center gap-2"><span class="text-purple-400">📍</span> Marcador tático da equipa</div>
                     </div>
                 </details>
             </div>
@@ -182,8 +181,8 @@
             </div>
         </div>
 
-        <!-- COLUNA DIREITA: Registo de Combate -->
-        <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] lg:h-auto relative">
+        <!-- COLUNA DIREITA: Registo de Combate (Limitado na Altura para dar Scroll) -->
+        <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] md:h-[600px] relative">
             <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
                 <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> REGISTO DE COMBATE
@@ -191,11 +190,10 @@
                 <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
             </div>
 
-            <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans">
+            <!-- Contentor de Registos -->
+            <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans flex flex-col">
                 <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
             </div>
-
-            <button id="jump-latest" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 bg-green-700 hover:bg-green-600 text-[11px] px-3 py-1 rounded-full shadow-lg border border-green-400">Novos registos ↓</button>
 
             <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500">
                 <span>UPLINK: <span id="last-update" class="text-green-500">--</span></span>
@@ -421,7 +419,7 @@
             let isDragging = false, hasMoved = false, startX = 0, startY = 0;
 
             el.addEventListener('pointerdown', (e) => {
-                if (!isAdmin) return; // Apenas admin pode arrastar
+                if (!isAdmin) return; 
                 isDragging = true;
                 hasMoved = false;
                 startX = e.clientX;
@@ -431,7 +429,6 @@
 
             el.addEventListener('pointermove', (e) => {
                 if (!isDragging || !isAdmin) return;
-                // Sensibilidade mínima para não confundir toque instável com arrasto
                 if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
                     hasMoved = true;
                 }
@@ -460,11 +457,10 @@
                 }
             });
 
-            // Clique puro e simples, 100% nativo. Não bloqueado por e.preventDefaults ruins.
             el.addEventListener('click', (e) => {
                 if (hasMoved && isAdmin) {
                     hasMoved = false; 
-                    return; // Se arrastou, não mostra modal de ordens
+                    return; 
                 }
                 onNodeTap(id);
             });
@@ -479,10 +475,10 @@
             const node = (lastFullData && lastFullData.nos && lastFullData.nos[id - 1]) || null;
             if (!node) { showModal('NÓ ' + id, 'Sem dados disponíveis ainda.'); return; }
             const isQuiral = lastFullData.md === 'QUIRAL';
-            let estado = node.online ? '<span class="text-green-400">ONLINE</span>' : '<span class="text-red-400">OFFLINE</span>'; let extra = '';
+            let estado = node.online ? '<span class="text-green-400">EM LINHA</span>' : '<span class="text-red-400">OFFLINE</span>'; let extra = '';
             if (node.online) {
                 if (isQuiral) extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>';
-                else extra = node.owner === 1 ? '<span class="text-blue-400">equipe Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">equipe Amarela</span>' : '<span class="text-gray-400">Neutro</span>';
+                else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>';
             }
             let ordemInfo = '';
             if (session) {
@@ -761,7 +757,7 @@
 
         function updateNodeCount(nos) {
             const online = nos.filter(n => n.online).length;
-            document.getElementById('node-count').textContent = `(${online}/${nos.length} online)`;
+            document.getElementById('node-count').textContent = `(${online}/${nos.length} em linha)`;
         }
 
         // =====================================
@@ -800,11 +796,15 @@
             });
         }
 
+        // ECLUSA DE REDE: PREVENÇÃO DE CONGESTIONAMENTO DO MAPA
+        let isFetchingConfig = false;
         async function fetchConfig() {
+            if (isFetchingConfig) return;
+            isFetchingConfig = true;
             try {
                 const resPos = await fetch(`${FIREBASE_BASE}/quiral_config/positions.json?nocache=${Date.now()}`);
                 const posData = await resPos.json();
-                if (posData && !layoutPendente && !arrastandoAgora) {
+                if (posData && !layoutPendente) {
                     nodePositions = fromFirebaseKeyed(posData);
                     Object.keys(nodePositions).forEach(id => {
                         const el = document.getElementById(`map-node-${id}`);
@@ -814,11 +814,15 @@
                 
                 if (!mapImageLoaded) {
                     const resMap = await fetch(`${FIREBASE_BASE}/quiral_config/mapImage.json?nocache=${Date.now()}`);
-                    const mapData = await resMap.json();
-                    if (mapData) { setMapImage(mapData); mapImageLoaded = true; } 
-                    else { document.getElementById('map-placeholder').innerText = "Aguardando mapa da nuvem..."; }
+                    if (resMap.ok) {
+                        const mapData = await resMap.json();
+                        if (mapData) { setMapImage(mapData); mapImageLoaded = true; } 
+                        else { document.getElementById('map-placeholder').innerText = "Aguardando mapa da nuvem..."; }
+                    }
                 }
-            } catch (err) {}
+            } catch (err) {} finally {
+                isFetchingConfig = false;
+            }
         }
 
         // =====================================
@@ -843,12 +847,13 @@
             renderedLogKeys.add(key);
             const box = document.getElementById('log-box');
             if (box.dataset.empty === '1') { box.innerHTML = ''; box.dataset.empty = '0'; }
-            const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 60;
-            const row = document.createElement('div'); row.className = 'log-entry border-b border-gray-800/60 pb-1';
+            
+            const row = document.createElement('div'); 
+            row.className = 'log-entry border-b border-gray-800/60 pb-1';
             row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> ${html}`;
-            box.appendChild(row);
-            if (wasNearBottom) { box.scrollTop = box.scrollHeight; document.getElementById('jump-latest').classList.add('hidden'); } 
-            else { document.getElementById('jump-latest').classList.remove('hidden'); }
+            
+            // INVERTE A ORDEM DO REGISTO DE COMBATE (MAIS NOVO NO TOPO)
+            box.prepend(row);
         }
 
         async function saveLogToCloud(key, html) {
@@ -898,12 +903,6 @@
             });
         }
 
-        function wireJumpLatest() {
-            const box = document.getElementById('log-box'); const pill = document.getElementById('jump-latest');
-            pill.addEventListener('click', () => { box.scrollTop = box.scrollHeight; pill.classList.add('hidden'); });
-            box.addEventListener('scroll', () => { const nearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 60; if (nearBottom) pill.classList.add('hidden'); });
-        }
-
         // =====================================
         // ANÁLISE DE ESTADO
         // =====================================
@@ -918,7 +917,7 @@
                 const prev = lastNodesData[i]; if (!prev) return; const id = i + 1;
 
                 if (node.online !== prev.online) {
-                    const msg = node.online ? `Nó ${id} <span class="text-green-400">voltou a ficar online</span>.` : `Nó ${id} <span class="text-gray-400 font-bold">perdeu conexão (offline)</span>.`;
+                    const msg = node.online ? `Nó ${id} <span class="text-green-400">voltou a ficar em linha</span>.` : `Nó ${id} <span class="text-gray-400 font-bold">perdeu conexão (offline)</span>.`;
                     registrarEventoUnico(`n${id}_net_${node.online}`, msg);
                 }
 
@@ -975,14 +974,13 @@
 
                 updateStatusBadge('ok', isPlaying);
 
-                // --- O ESCUDO DO F5 ---
                 if (lastGameState !== null) { 
                     if (isPlaying && lastGameState === "OFF") {
                         await startNewMatchLogs(); 
                     } else if (!isPlaying && lastGameState === "ON") {
                         const finalAzul = parseInt(data.az || 0); const finalAmarelo = parseInt(data.am || 0); let vencedor;
-                        if (finalAzul > finalAmarelo) vencedor = '<span class="text-blue-400 font-bold">EQUIPE AZUL VENCEU</span>';
-                        else if (finalAmarelo > finalAzul) vencedor = '<span class="text-yellow-400 font-bold">EQUIPE AMARELA VENCEU</span>';
+                        if (finalAzul > finalAmarelo) vencedor = '<span class="text-blue-400 font-bold">EQUIPA AZUL VENCEU</span>';
+                        else if (finalAmarelo > finalAzul) vencedor = '<span class="text-yellow-400 font-bold">EQUIPA AMARELA VENCEU</span>';
                         else vencedor = '<span class="text-gray-300 font-bold">EMPATE</span>';
                         registrarEventoUnico('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span> Placar final: <span class="text-gray-300">${finalAzul}x${finalAmarelo}</span> — ${vencedor}`);
                     }
@@ -1059,7 +1057,7 @@
         }
 
         function initMap() {
-            wireMapUpload(); wireResetLogsButton(); wireJumpLatest(); wireFullscreen();
+            wireMapUpload(); wireResetLogsButton(); wireFullscreen();
             applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
             if (localStorage.getItem('quiral_modo_noturno') === '1') toggleModoNoturno(true);
             atualizarIndicadorFila();
