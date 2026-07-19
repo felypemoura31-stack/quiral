@@ -330,9 +330,8 @@
                 }
 
                 if (!leafletNodeMarkers[id]) {
-                    // HTML do Nó INCLUI os badges de ordens ocultos
                     const iconHTML = `
-                        <div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass} ${isAdmin ? 'admin-mode' : ''}">
+                        <div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto ${cssClass} ${isAdmin ? 'admin-mode' : ''}">
                             ${id}
                             <span id="ordem-badge-azul-${id}" class="ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300"></span>
                             <span id="ordem-badge-amarelo-${id}" class="ordem-badge hidden absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-yellow-300"></span>
@@ -341,7 +340,10 @@
                     
                     const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [32, 32], iconAnchor: [16, 16] });
 
-                    const marker = L.marker([pos.lat, pos.lng], { icon: icon, draggable: isAdmin }).addTo(map);
+                    const marker = L.marker([pos.lat, pos.lng], { 
+                        icon: icon, 
+                        draggable: isAdmin 
+                    }).addTo(map);
 
                     marker.on('dragend', function(e) {
                         if (!isAdmin) return;
@@ -350,12 +352,17 @@
                         marcarLayoutPendente();
                     });
 
-                    marker.on('click', function() { onNodeTap(id); });
+                    // Usa os dois eventos do Leaflet para captar todos os tipos de touch/mouse
+                    marker.on('click', function(e) {
+                        L.DomEvent.stopPropagation(e); // Impede que o clique "vaze" para o mapa
+                        onNodeTap(id); 
+                    });
+                    
                     leafletNodeMarkers[id] = marker;
                 } else {
                     const marker = leafletNodeMarkers[id];
                     const divEl = document.getElementById(`map-node-${id}`);
-                    if (divEl) { divEl.className = `map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass} ${isAdmin ? 'admin-mode' : ''}`; }
+                    if (divEl) { divEl.className = `map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto ${cssClass} ${isAdmin ? 'admin-mode' : ''}`; }
 
                     if (marker.options.draggable !== isAdmin) {
                         if (isAdmin) marker.dragging.enable(); else marker.dragging.disable();
@@ -365,7 +372,7 @@
                 }
             });
             
-            renderComandosOverlay(); // Garante que as ordens são desenhadas após os nós existirem
+            renderComandosOverlay(); 
         }
 
         // -------------------------------------------------------------
@@ -632,9 +639,9 @@
             if (contas[roleKey] && contas[roleKey].passHash === hashDigitado) {
                 contaValida = true;
             } else if (!contas[roleKey]) {
-                // Fallbacks se DB não tiver a chave ainda
+                // Fallbacks se DB não tiver a chave ainda (Senhas corrigidas)
                 const fallbacks = {
-                    'admin': '0a656a80479da751fbb3ce7c0ec72bb9b72cf72bb90f42b32525cc31f24d26eb', // quiral2026
+                    'admin': await sha256('quiral2026'),
                     'comandante_azul': await sha256('azulcmd'),
                     'jogador_azul': await sha256('azul123'),
                     'comandante_amarelo': await sha256('amarelocmd'),
