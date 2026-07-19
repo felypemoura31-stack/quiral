@@ -600,7 +600,7 @@
 
         function openLoginModal() {
             if (session) { logout(); return; }
-            document.getElementById('login-user').value = ''; document.getElementById('login-pass').value = '';
+            document.getElementById('login-callsign').value = ''; document.getElementById('login-pass').value = '';
             document.getElementById('login-erro').classList.add('hidden');
             toggleCodinomeField();
             const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
