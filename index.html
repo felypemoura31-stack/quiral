@@ -3,92 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rede Quiral - Comando Tático GPS</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <title>Rede Quiral - Comando Tático (GPS Real)</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
     <meta name="theme-color" content="#050505">
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- LEAFLET.JS: CSS e JS via CDN (Gratuito, sem API Key) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" integrity="sha512-h9t/1Tq38B5S2Wl2P9xW2xW2fX722Kx/X2S+S3W92x+T3w959w90+r9xX+w78M27Q==" crossorigin="" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" integrity="sha512-puw7+E+pMv9f9s81xN3zJ0s/M9E+H+wzB+wK0x/0M9+O+10w92x9X2N+w==" crossorigin=""></script>
+    <!-- LEAFLET CSS & JS (Motor de Mapas Gratuito) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
         body { font-family: 'Share Tech Mono', monospace; background-color: #050505; color: #fff; }
         .neon-text { text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #0ff; }
         .pulse { animation: pulse-animation 2s infinite; }
-        @keyframes pulse-animation { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes pulse-animation { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
         .bg-chiral { background: linear-gradient(180deg, #1a1a1a 0%, #050505 100%); }
         .log-container::-webkit-scrollbar { width: 6px; }
         .log-container::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         .log-entry { animation: fade-in 0.35s ease-out; }
         @keyframes fade-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-
+        
         body.modo-noturno { filter: grayscale(0.25) sepia(1) hue-rotate(-50deg) saturate(6) brightness(0.65); transition: filter 0.3s ease; }
 
-        .active-blue { background-color: rgba(59, 130, 246, 0.85); border-color: #60a5fa; color: #fff; }
-        .active-yellow { background-color: rgba(234, 179, 8, 0.85); border-color: #fde047; color: #000; }
-        .active-green { background-color: rgba(34, 197, 94, 0.85); border-color: #4ade80; color: #fff; }
-        .inactive-red { background-color: rgba(239, 68, 68, 0.85); border-color: #f87171; color: #fff; }
-        .offline { background-color: rgba(31, 41, 55, 0.85); border-color: #4b5563; color: #9ca3af; }
-        .neutral-white { background-color: rgba(255, 255, 255, 0.85); border-color: #e5e7eb; color: #000; }
-
-        button:focus-visible, label:focus-visible, input:focus-visible, [tabindex]:focus-visible {
-            outline: 2px solid #4ade80; outline-offset: 2px;
-        }
-
-        /* Estilos Personalizados para o Leaflet */
-        .leaflet-container { background: #000; font-family: 'Share Tech Mono', monospace; }
+        /* Estilos para os Marcadores (Nós) no Leaflet */
+        .custom-node-icon { background: transparent; border: none; }
+        .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; cursor: pointer; }
+        .map-node.admin-mode { cursor: grab; }
+        .map-node.admin-mode:active { cursor: grabbing; }
         
-        /* Nó/Objetivo no Leaflet */
-        .leaflet-node-icon {
-            border-radius: 50%;
-            border: 2px solid white;
-            color: white;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            box-shadow: 0 0 5px rgba(0,0,0,0.8);
-            transition: all 0.3s ease;
-        }
-        
-        /* Jogador GPS no Leaflet */
-        .leaflet-player-icon {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-end;
-            margin-top: -12px; /* Centrar o pinho visualmente */
-        }
-        .player-pin {
-            width: 16px; height: 16px;
-            border-radius: 50%;
-            border: 2px solid white;
-            box-shadow: 0 0 5px black;
-        }
-        .player-label {
-            background: rgba(0,0,0,0.7);
-            color: white;
-            font-size: 9px;
-            padding: 1px 4px;
-            border-radius: 3px;
-            margin-top: 2px;
-            white-space: nowrap;
-        }
+        .active-blue { background-color: rgba(59, 130, 246, 0.9); border-color: #60a5fa; box-shadow: 0 0 15px #3b82f6; color: #fff; }
+        .active-yellow { background-color: rgba(234, 179, 8, 0.9); border-color: #fde047; box-shadow: 0 0 15px #eab308; color: #000; }
+        .active-green { background-color: rgba(34, 197, 94, 0.9); border-color: #4ade80; box-shadow: 0 0 15px #22c55e; color: #fff; }
+        .inactive-red { background-color: rgba(239, 68, 68, 0.9); border-color: #f87171; box-shadow: 0 0 15px #ef4444; color: #fff; }
+        .offline { background-color: rgba(31, 41, 55, 0.9); border-color: #4b5563; color: #9ca3af; }
+        .neutral-white { background-color: rgba(255, 255, 255, 0.9); border-color: #e5e7eb; box-shadow: 0 0 10px #ffffff; color: #000; }
 
-        /* Ocultar controlos default do Leaflet se não for admin (opcional) */
-        .leaflet-control-zoom { border: 1px solid #333 !important; }
-        .leaflet-bar a { background-color: #1a1a1a !important; color: #aaa !important; border-bottom: 1px solid #333 !important; }
-        .leaflet-bar a:hover { background-color: #333 !important; color: #fff !important; }
+        button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
+        
+        /* Ajustar controlos do Leaflet ao tema escuro */
+        .leaflet-control-layers, .leaflet-control-zoom { border: 1px solid #4b5563 !important; background: rgba(17, 24, 39, 0.8) !important; color: #fff !important; }
+        .leaflet-control-layers-list { color: #fff; }
+        .leaflet-bar a { background-color: #1f2937 !important; color: #d1d5db !important; border-bottom: 1px solid #374151 !important; }
+        .leaflet-bar a:hover { background-color: #374151 !important; color: #fff !important; }
     </style>
 </head>
 <body class="bg-chiral min-h-screen p-2 md:p-4">
 
-    <!-- Modais -->
-    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden opacity-0 transition-opacity">
+    <!-- MODAIS DE UI -->
+    <div id="modal-box" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg text-center shadow-2xl max-w-sm mx-4">
             <h3 class="text-xl text-yellow-500 mb-2 font-bold">AVISO TÁTICO</h3>
             <p id="modal-text" class="text-gray-300 mb-4"></p>
@@ -96,66 +59,56 @@
         </div>
     </div>
 
-    <div id="login-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
+    <!-- LOGIN OTIMIZADO PARA MULTIPLAYER -->
+    <div id="login-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[1000] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
-            <h3 class="text-xl text-red-500 mb-4 font-bold text-center">ACESSO RESTRITO</h3>
-            <input type="text" id="login-user" placeholder="Usuário" autocomplete="off" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-blue-500 focus:outline-none">
-            <input type="password" id="login-pass" placeholder="Senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-blue-500 focus:outline-none" onkeydown="if(event.key==='Enter') autenticar()">
-            <p id="login-erro" class="text-red-400 text-xs mb-3 hidden">Usuário ou senha incorretos.</p>
-            <div class="flex justify-between">
-                <button onclick="closeLoginModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">CANCELAR</button>
-                <button onclick="autenticar()" class="px-4 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded font-bold border border-blue-600">ENTRAR</button>
+            <h3 class="text-xl text-green-500 mb-4 font-bold text-center">IDENTIFICAÇÃO DE OPERADOR</h3>
+            
+            <label class="block text-xs text-gray-400 mb-1">Nome / Callsign:</label>
+            <input type="text" id="login-user" placeholder="Ex: Falcão, Alfa-1..." autocomplete="off" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-green-500 focus:outline-none">
+            
+            <label class="block text-xs text-gray-400 mb-1">Regimento / Função:</label>
+            <select id="login-team" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-green-500 focus:outline-none" onchange="toggleSenhaAdmin()">
+                <option value="azul">Equipa Azul</option>
+                <option value="amarelo">Equipa Amarela</option>
+                <option value="admin">Administrador (Comando)</option>
+            </select>
+
+            <div id="div-senha" class="hidden">
+                <label class="block text-xs text-gray-400 mb-1">Senha de Acesso:</label>
+                <input type="password" id="login-pass" placeholder="***" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-green-500 focus:outline-none" onkeydown="if(event.key==='Enter') autenticar()">
+            </div>
+
+            <p id="login-erro" class="text-red-400 text-xs mb-3 hidden">Senha incorreta para Administrador.</p>
+            
+            <div class="flex justify-between mt-4">
+                <button onclick="closeLoginModal()" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded font-bold border border-gray-600">CANCELAR</button>
+                <button onclick="autenticar()" class="px-4 py-2 bg-green-900 hover:bg-green-800 text-white rounded font-bold border border-green-600">INICIAR SESSÃO</button>
             </div>
         </div>
     </div>
 
-    <div id="contas-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
-        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-md mx-4 w-full max-h-[85vh] overflow-y-auto">
-            <h3 class="text-lg text-gray-200 mb-4 font-bold text-center">CONTAS DE ACESSO</h3>
-            <div id="contas-lista" class="space-y-4"></div>
-            <button onclick="closeContasModal()" class="w-full mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold border border-gray-600">FECHAR</button>
-        </div>
-    </div>
+    <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-[2000] bg-gray-900 border border-green-600 text-green-300 text-xs px-4 py-2 rounded-full shadow-lg transition-opacity"></div>
 
-    <div id="ordem-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
-        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-xs mx-4 w-full text-center">
-            <h3 id="ordem-titulo" class="text-lg text-gray-200 mb-4 font-bold">NÓ 1</h3>
-            <div class="grid grid-cols-2 gap-2 mb-3">
-                <button onclick="emitirOrdem('atacar')" class="px-3 py-3 bg-red-900 hover:bg-red-800 text-white rounded font-bold border border-red-600">⚔ ATACAR</button>
-                <button onclick="emitirOrdem('defender')" class="px-3 py-3 bg-blue-900 hover:bg-blue-800 text-white rounded font-bold border border-blue-600">🛡 DEFENDER</button>
-            </div>
-            <button onclick="emitirOrdem(null)" class="w-full px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-sm border border-gray-600 mb-2">Cancelar ordem</button>
-            <button onclick="closeOrdemModal()" class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm border border-gray-600">Fechar</button>
-        </div>
-    </div>
-
-    <div id="historico-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 hidden opacity-0 transition-opacity">
-        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full max-h-[80vh] flex flex-col">
-            <h3 class="text-lg text-gray-200 mb-3 font-bold text-center">HISTÓRICO DE ORDENS</h3>
-            <div id="historico-lista" class="flex-1 overflow-y-auto space-y-2 text-xs font-sans mb-3"></div>
-            <button onclick="closeHistoricoModal()" class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm border border-gray-600">Fechar</button>
-        </div>
-    </div>
-
-    <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-[70] bg-gray-900 border border-green-600 text-green-300 text-xs px-4 py-2 rounded-full shadow-lg transition-opacity"></div>
-
+    <!-- CABEÇALHO -->
     <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4 relative">
+        <button id="btn-gps" onclick="toggleGPS()" title="Transmitir Posição" class="absolute left-0 top-0 text-gray-400 hover:text-white text-xs px-2 py-1 border border-gray-700 rounded bg-gray-900 hidden transition-colors shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10">📍 GPS: OFF</button>
+        <button id="btn-login" onclick="openLoginModal()" title="Entrar" class="absolute left-0 top-8 text-gray-500 hover:text-white text-xs px-2 py-1 border border-gray-700 rounded z-10">🔒 ENTRAR</button>
+        
         <button id="btn-fullscreen" title="Ecrã inteiro" class="absolute right-0 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">⛶</button>
         <button id="btn-noturno" onclick="toggleModoNoturno()" title="Modo noturno" class="absolute right-8 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">🌙</button>
         <button id="btn-wakelock" onclick="toggleWakeLock()" title="Manter tela ligada" class="absolute right-16 top-0 text-gray-500 hover:text-white text-lg px-2 py-1">💡</button>
-        <!-- Novo Botão GPS -->
-        <button id="btn-gps" onclick="toggleGPS()" title="Transmitir GPS" class="absolute left-24 top-0 text-gray-500 hover:text-white text-xs px-2 py-1 border border-gray-700 rounded hidden transition-colors">📍 GPS: OFF</button>
-        <button id="btn-login" onclick="openLoginModal()" title="Entrar" class="absolute left-0 top-0 text-gray-500 hover:text-white text-xs px-2 py-1 border border-gray-700 rounded">🔒 ENTRAR</button>
         
-        <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider">[ COMANDO QUIRAL ]</h1>
+        <h1 class="text-2xl md:text-4xl font-bold text-green-400 mb-1 tracking-wider mt-6 md:mt-0">[ COMANDO QUIRAL ]</h1>
         <div id="status-badge" class="mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-700">A ESTABELECER LIGAÇÃO...</div>
-        <div id="conn-detail" class="text-[10px] text-gray-600 mt-1"></div>
-        <div id="fila-indicador" class="hidden text-[10px] text-amber-500 mt-1 font-bold"></div>
+        <div id="conn-detail" class="text-[10px] text-gray-600 mt-1">Aguardando dados...</div>
         <div id="session-badge" class="hidden mt-2 text-xs"></div>
     </header>
 
+    <!-- ÁREA PRINCIPAL -->
     <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         <div class="lg:col-span-2 space-y-4 md:space-y-6">
+            <!-- PLACAR -->
             <div class="bg-gray-900/80 border border-gray-700 p-4 rounded-lg shadow-lg relative overflow-hidden">
                 <div class="flex justify-between items-center relative z-10">
                     <div class="text-center w-1/3">
@@ -173,209 +126,220 @@
                 </div>
             </div>
 
-            <div class="bg-gray-900/80 border border-gray-700 p-2 md:p-4 rounded-lg shadow-lg">
+            <!-- MAPA LEAFLET -->
+            <div class="bg-gray-900/80 border border-gray-700 p-2 md:p-4 rounded-lg shadow-lg relative">
                 <div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
                     <h2 class="text-sm md:text-base text-gray-400 font-bold">MAPA TÁTICO GPS <span id="node-count" class="text-gray-600 font-normal"></span></h2>
                     <div class="flex gap-2 flex-wrap justify-end">
-                        <button id="btn-marcador" onclick="ativarModoMarcador()" class="hidden bg-purple-950 hover:bg-purple-900 text-xs text-purple-300 px-3 py-1 rounded border border-purple-700 transition-colors">📍 MARCADOR</button>
-                        <button id="btn-historico" onclick="openHistoricoModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">HISTÓRICO</button>
-                        <button id="btn-exportar" onclick="exportarLog()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">EXPORTAR</button>
                         <button id="btn-salvar-layout" onclick="salvarLayout()" class="hidden bg-green-900 hover:bg-green-800 text-xs text-green-200 px-3 py-1 rounded border border-green-600 transition-colors">SALVAR LAYOUT</button>
-                        <button id="btn-reset-logs" class="hidden bg-red-950 hover:bg-red-900 text-xs text-red-300 px-3 py-1 rounded border border-red-800 transition-colors">LIMPAR REGISTOS</button>
-                        <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">CONTAS</button>
                     </div>
                 </div>
 
-                <!-- CONTENTOR LEAFLET MAPS -->
-                <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded overflow-hidden touch-none select-none z-0" style="aspect-ratio: 16/9; min-height: 400px;">
-                    <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-600 text-xs md:text-sm text-center px-6 z-20 bg-gray-900/90">
-                        A iniciar Satélite...
-                    </div>
-                    <div id="leaflet-map" class="absolute inset-0 w-full h-full z-10"></div>
+                <!-- O CONTAINER DO MAPA (Tem de ter altura definida para o Leaflet funcionar) -->
+                <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded z-0" style="height: 450px;">
+                    <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-500 text-sm z-10 pointer-events-none bg-gray-900">A iniciar Satélite...</div>
+                    <div id="leaflet-map" class="absolute inset-0 w-full h-full z-0"></div>
                 </div>
-                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós no mapa e depois toque em "SALVAR LAYOUT".</p>
-                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mt-2 text-center">Toque em qualquer ponto do mapa para colocar um marcador da sua equipa.</p>
+                
+                <p id="admin-hint" class="text-[10px] text-gray-500 mt-2 text-center hidden">Modo Edição Ativado: arraste os nós (1, 2...) no mapa e depois toque em "SALVAR LAYOUT".</p>
 
-                <details class="mt-3 text-xs text-gray-500 relative z-0">
+                <details class="mt-3 text-xs text-gray-500">
                     <summary class="cursor-pointer select-none text-gray-400">Legenda do mapa</summary>
                     <div class="grid grid-cols-2 gap-2 mt-2 text-[11px]">
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(34,197,94,.85)"></span> Ativo / dominado (verde)</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(239,68,68,.85)"></span> Capturado / neutralizado</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(59,130,246,.85)"></span> Equipa Azul</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(234,179,8,.85)"></span> Equipa Amarela</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(255,255,255,.85)"></span> Neutro (Livre)</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(31,41,55,.85)"></span> Offline (Sem Sinal)</div>
-                        <div class="flex items-center gap-2"><span class="w-4 h-4 rounded-full inline-flex items-center justify-center bg-red-600 text-[9px]">⚔</span> Ordem: atacar</div>
-                        <div class="flex items-center gap-2"><span class="w-4 h-4 rounded-full inline-flex items-center justify-center bg-blue-600 text-[9px]">🛡</span> Ordem: defender</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block bg-blue-500 border border-white"></span> Jogador Azul (GPS)</div>
-                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block bg-yellow-500 border border-white"></span> Jogador Amarelo (GPS)</div>
-                        <div class="flex items-center gap-2"><span class="text-purple-400">📍</span> Marcador tático</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(34,197,94,.9)"></span> Ativo / dominado (verde)</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(239,68,68,.9)"></span> Capturado / neutralizado</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(59,130,246,.9)"></span> Equipa Azul</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(234,179,8,.9)"></span> Equipa Amarela</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:rgba(31,41,55,.9)"></span> Offline / Neutro</div>
+                        <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full inline-block bg-blue-500 pulse"></span> Operador (Azul ou Amarelo)</div>
                     </div>
                 </details>
             </div>
-
-            <div class="bg-gray-900/50 border border-gray-800 p-3 rounded-lg">
-                <h2 class="text-xs text-gray-500 mb-2 font-bold text-center">RADAR DE CÓDIGOS (CLÁSSICO)</h2>
-                <div id="nodes-grid" class="grid grid-cols-5 md:grid-cols-10 gap-1 md:gap-2"></div>
-            </div>
         </div>
 
-        <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] md:h-[600px] relative z-0">
+        <!-- REGISTOS -->
+        <div class="bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col h-[400px] md:h-[600px] relative">
             <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
                 <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> REGISTO DE COMBATE
                 </h2>
-                <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-1 rounded border border-blue-800">CLOUD SYNC</span>
             </div>
-
             <div id="log-box" class="flex-1 p-3 overflow-y-auto log-container space-y-2 text-xs md:text-sm font-sans flex flex-col">
-                <div class="text-gray-500 text-center italic mt-10">A buscar registos da nuvem...</div>
+                <div class="text-gray-500 text-center italic mt-10">A buscar registos...</div>
             </div>
-
             <div class="p-2 border-t border-gray-800 bg-black rounded-b-lg flex justify-between items-center text-[10px] text-gray-500">
                 <span>UPLINK: <span id="last-update" class="text-green-500">--</span></span>
-                <span>DB: FIREBASE_RTDB</span>
             </div>
         </div>
     </main>
 
     <script>
         const FIREBASE_BASE = "https://quiral-f97a2-default-rtdb.firebaseio.com";
-        const GAME_URL       = FIREBASE_BASE + "/quiral.json";
-        const CONFIG_URL     = FIREBASE_BASE + "/quiral_config.json";
-        const LOGS_URL       = FIREBASE_BASE + "/quiral_logs.json";
-        const AUTH_URL       = FIREBASE_BASE + "/quiral_auth.json";
-        const COMANDOS_URL   = FIREBASE_BASE + "/quiral_comandos.json";
-        const ORDENS_LOG_URL = FIREBASE_BASE + "/quiral_ordens_log.json";
-        const GPS_URL        = FIREBASE_BASE + "/quiral_gps.json";
-
-        const ORDEM_EXPIRA_MIN = 10;
-        const CENTRO_DEFAULT = { lat: -17.763466, lng: -48.649717 }; // Caldas Novas, GO
-
-        const ROLE_KEYS = ['admin', 'comandante_azul', 'jogador_azul', 'comandante_amarelo', 'jogador_amarelo'];
-        const ROLE_LABELS = { admin: 'Administrador', comandante_azul: 'Comandante Azul', jogador_azul: 'Jogador Azul', comandante_amarelo: 'Comandante Amarelo', jogador_amarelo: 'Jogador Amarelo' };
-        function roleTeamOf(key) { return key.endsWith('_azul') ? 'azul' : key.endsWith('_amarelo') ? 'amarelo' : null; }
-        function roleTypeOf(key) { return key.startsWith('comandante') ? 'comandante' : key.startsWith('jogador') ? 'jogador' : 'admin'; }
-
+        
+        // --- COORDENADAS REAIS DO SEU CAMPO (Caldas Novas, GO) ---
+        const CENTRO_MAPA = [-17.763466, -48.649717];
+        
         let session = null;
         try { session = JSON.parse(sessionStorage.getItem('quiral_session')); } catch (err) {}
         let isAdmin = !!(session && session.role === 'admin');
 
-        // MAPS STATE
-        let lMap = null; // Leaflet Map Instance
-        let nodeMarkersMap = {}; 
-        let playerMarkersMap = {}; 
-        let tacticalMarkersMap = {};
-
-        let gpsWatchId = null;
-        let isTransmittingGPS = false;
-
-        let lastGameState = null;
+        // Estado do Jogo
         let lastFullData = null;
         let lastNodesData = null;
         let lastSuccessfulFetch = 0;
-        let currentNodeCount = 0;
         let nodePositions = {};
-        let marcadoresAtuais = {};
-        let comandosAtuais = {};
-        let comandosAnteriores = null;
-        let ordemNodeAlvo = null;
-        let colocandoMarcador = false;
+        
+        // Estado do Mapa Leaflet
+        let map = null;
+        let leafletNodeMarkers = {}; // Guarda as flags/bases
+        let leafletPlayerMarkers = {}; // Guarda os operadores
+        let layoutPendente = false;
+
+        // Estado GPS
+        let gpsWatchId = null;
+        let isGpsActive = false;
+        
         let wakeLock = null;
         const renderedLogKeys = new Set();
-        let filaEscritas = [];
 
-        try { filaEscritas = JSON.parse(localStorage.getItem('quiral_fila') || '[]'); } catch (err) { filaEscritas = []; }
-
+        // -------------------------------------------------------------
+        // INICIALIZAÇÃO DO MAPA LEAFLET (Executado imediatamente)
+        // -------------------------------------------------------------
         function initLeafletMap() {
-            const container = document.getElementById("leaflet-map");
-            if (!container) return;
-
-            // Inicializa mapa Leaflet
-            lMap = L.map('leaflet-map', {
-                center: [CENTRO_DEFAULT.lat, CENTRO_DEFAULT.lng],
-                zoom: 17,
-                zoomControl: true,
-                attributionControl: false // Remove créditos para limpar a UI
-            });
-
-            // Imagens de Satélite Gratuitas da ESRI World Imagery
-            const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                maxZoom: 18,
-                attribution: 'Tiles &copy; Esri'
-            });
-
-            // Alternativa: OpenStreetMap (Ruas e Terreno)
-            const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '&copy; OpenStreetMap'
-            });
-
-            satelite.addTo(lMap);
-
-            // Controlo para alternar entre Satélite e Ruas
-            L.control.layers({
-                "Satélite (Mato)": satelite,
-                "Mapa (Ruas)": ruas
-            }).addTo(lMap);
-
-            lMap.on('click', (e) => {
-                if (colocandoMarcador) {
-                    ativarModoMarcador();
-                    const label = prompt('Nome do marcador tático (ex: "Avançar por aqui"):');
-                    if (label === null) return;
-                    criarMarcadorCloud(e.latlng.lat, e.latlng.lng, label.trim() || 'Alvo');
-                }
-            });
-
-            document.getElementById('map-placeholder').classList.add('hidden');
-            
-            // Força redraw se os dados já tiverem chegado antes do mapa estar pronto
-            if (lastFullData) renderVisuals(lastFullData);
-            if (marcadoresAtuais) renderMarcadoresLeaflet();
-        }
-
-        function salvarFila() { localStorage.setItem('quiral_fila', JSON.stringify(filaEscritas)); atualizarIndicadorFila(); }
-        function atualizarIndicadorFila() {
-            const el = document.getElementById('fila-indicador');
-            if (!el) return;
-            if (filaEscritas.length > 0) { el.textContent = `⏳ ${filaEscritas.length} alteração(ões) aguardando conexão`; el.classList.remove('hidden'); }
-            else { el.classList.add('hidden'); }
-        }
-
-        async function escreverComRetry(url, opts, descricao) {
+            if (map) return;
             try {
-                const res = await fetch(url, opts);
-                if (!res.ok) throw new Error('status ' + res.status);
-                return true;
+                // Remove o ecrã de carregamento
+                document.getElementById('map-placeholder').classList.add('hidden');
+                
+                // Inicializa o Mapa centrado nas coordenadas
+                map = L.map('leaflet-map', {
+                    zoomControl: false // Movemos para cima à direita
+                }).setView(CENTRO_MAPA, 18);
+
+                L.control.zoom({ position: 'topright' }).addTo(map);
+
+                // Imagens de Satélite (ESRI) - Gratuito e boa qualidade
+                const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    maxZoom: 19,
+                    attribution: 'Tiles &copy; Esri'
+                });
+
+                // Mapa de Ruas (OpenStreetMap) - Alternativa leve
+                const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap'
+                });
+
+                // Adiciona o satélite por defeito
+                satelite.addTo(map);
+
+                // Controlo para trocar entre camadas
+                const baseMaps = {
+                    "Satélite (Mato)": satelite,
+                    "Mapa (Ruas)": ruas
+                };
+                L.control.layers(baseMaps, null, {position: 'topright'}).addTo(map);
+
+                // Forçar o mapa a atualizar o tamanho no telemóvel
+                setTimeout(() => { map.invalidateSize(); }, 600);
             } catch (err) {
-                filaEscritas.push({ url, opts, descricao: descricao || '', tentativas: 0 });
-                salvarFila(); return false;
+                console.error("Erro ao iniciar o mapa Leaflet:", err);
             }
         }
 
-        async function processarFilaEscritas() {
-            if (!filaEscritas.length) return;
-            const restantes = [];
-            for (const item of filaEscritas) {
-                try {
-                    const res = await fetch(item.url, item.opts);
-                    if (!res.ok) throw new Error('status ' + res.status);
-                } catch (err) {
-                    item.tentativas = (item.tentativas || 0) + 1;
-                    if (item.tentativas < 40) restantes.push(item);
+        // -------------------------------------------------------------
+        // SINCRONIZAÇÃO DE NÓS/OBJETIVOS (Leaflet Markers)
+        // -------------------------------------------------------------
+        function renderVisuals(data) {
+            const isQuiral = data.md === "QUIRAL";
+            
+            data.nos.forEach((node, index) => {
+                const id = index + 1;
+                
+                // Determinar Estilos do Nó
+                let cssClass = "offline";
+                if (node.online) {
+                    if (isQuiral) {
+                        cssClass = node.ativo ? "active-green" : "inactive-red";
+                    } else {
+                        if (node.owner === 1) cssClass = "active-blue";
+                        else if (node.owner === 2) cssClass = "active-yellow";
+                        else cssClass = "neutral-white";
+                    }
                 }
-            }
-            const tinhaAlgo = filaEscritas.length > 0;
-            filaEscritas = restantes; salvarFila();
-            if (tinhaAlgo && filaEscritas.length === 0) mostrarToast('✔ Tudo sincronizado com a nuvem.');
+                
+                // Tratar Coordenadas do Nó
+                let pos = nodePositions[id];
+                
+                // REDE DE SEGURANÇA: Se a base de dados tiver o modelo antigo ou coordenadas muito longe
+                let latValid = pos && typeof pos.lat === 'number';
+                let isTooFar = latValid && (Math.abs(pos.lat - CENTRO_MAPA[0]) > 0.5); 
+                
+                if (!pos || !latValid || isTooFar) {
+                    // Posiciona ligeiramente afastado do centro para não ficarem sobrepostos
+                    const offsetLat = (Math.random() - 0.5) * 0.0015;
+                    const offsetLng = (Math.random() - 0.5) * 0.0015;
+                    pos = { lat: CENTRO_MAPA[0] + offsetLat, lng: CENTRO_MAPA[1] + offsetLng };
+                    nodePositions[id] = pos;
+                }
+
+                // Criar ou Atualizar Marcador no Leaflet
+                if (!leafletNodeMarkers[id]) {
+                    // Criação pela primeira vez
+                    const iconHTML = `<div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass} ${isAdmin ? 'admin-mode' : ''}">${id}</div>`;
+                    
+                    const icon = L.divIcon({
+                        className: 'custom-node-icon',
+                        html: iconHTML,
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16] // Fica centrado na coordenada
+                    });
+
+                    const marker = L.marker([pos.lat, pos.lng], {
+                        icon: icon,
+                        draggable: isAdmin
+                    }).addTo(map);
+
+                    // Evento de Arrastar (Apenas Admin)
+                    marker.on('dragend', function(e) {
+                        if (!isAdmin) return;
+                        const newPos = e.target.getLatLng();
+                        nodePositions[id] = { lat: newPos.lat, lng: newPos.lng };
+                        marcarLayoutPendente();
+                    });
+
+                    // Clicar para ver detalhes
+                    marker.on('click', function() { showNodeDetail(id); });
+
+                    leafletNodeMarkers[id] = marker;
+                } else {
+                    // Atualização de estado e classe CSS
+                    const marker = leafletNodeMarkers[id];
+                    const divEl = document.getElementById(`map-node-${id}`);
+                    if (divEl) {
+                        divEl.className = `map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass} ${isAdmin ? 'admin-mode' : ''}`;
+                    }
+
+                    // Se não estivermos a arrastar, garante que a posição bate certo com a BD
+                    if (marker.options.draggable !== isAdmin) {
+                        if (isAdmin) marker.dragging.enable();
+                        else marker.dragging.disable();
+                        marker.options.draggable = isAdmin;
+                    }
+                    if (!isAdmin) {
+                        marker.setLatLng([pos.lat, pos.lng]);
+                    }
+                }
+            });
         }
 
-        let toastTimer = null;
-        function mostrarToast(texto) {
-            const el = document.getElementById('toast'); el.textContent = texto; el.classList.remove('hidden', 'opacity-0');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => { el.classList.add('opacity-0'); setTimeout(() => el.classList.add('hidden'), 300); }, 4000);
+        // -------------------------------------------------------------
+        // LAYOUT (ADMIN)
+        // -------------------------------------------------------------
+        function marcarLayoutPendente() {
+            layoutPendente = true;
+            const btn = document.getElementById('btn-salvar-layout');
+            btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse');
         }
 
         function toFirebaseKeyed(obj) { const out = {}; Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; }); return out; }
@@ -384,11 +348,130 @@
             Object.keys(raw).forEach(k => { if (raw[k] == null) return; const id = String(k).replace(/^n/, ''); out[id] = raw[k]; });
             return out;
         }
-        async function sha256(texto) {
-            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
-            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        async function salvarLayout() {
+            if (!isAdmin) return;
+            const btn = document.getElementById('btn-salvar-layout');
+            btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
+            
+            try {
+                await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json`, { 
+                    method: 'PUT', 
+                    body: JSON.stringify(toFirebaseKeyed(nodePositions)) 
+                });
+                layoutPendente = false; 
+                btn.textContent = 'SALVO ✔';
+            } catch(e) {
+                btn.textContent = 'ERRO AO SALVAR';
+            }
+            setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 2000);
         }
 
+        async function fetchPositions() {
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json?nocache=${Date.now()}`);
+                const data = await res.json();
+                if (data && !layoutPendente) {
+                    nodePositions = fromFirebaseKeyed(data);
+                }
+            } catch (err) {}
+        }
+
+        // -------------------------------------------------------------
+        // RASTREAMENTO GPS DOS OPERADORES
+        // -------------------------------------------------------------
+        function toggleGPS() {
+            if (!session || !session.team) { mostrarToast("Deve fazer login primeiro."); return; }
+            const btn = document.getElementById('btn-gps');
+            
+            if (isGpsActive) {
+                // Desligar
+                if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
+                isGpsActive = false;
+                btn.textContent = '📍 GPS: OFF';
+                btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600');
+                btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
+                mostrarToast("Transmissor GPS Desligado.");
+            } else {
+                // Ligar
+                if (!("geolocation" in navigator)) { mostrarToast("GPS não suportado neste aparelho."); return; }
+                
+                isGpsActive = true;
+                btn.textContent = '📍 GPS: ON';
+                btn.classList.remove('bg-gray-900', 'text-gray-400', 'border-gray-700');
+                btn.classList.add('bg-green-900', 'text-green-300', 'border-green-600');
+                mostrarToast("A iniciar transmissão de posição...");
+
+                gpsWatchId = navigator.geolocation.watchPosition(
+                    async (position) => {
+                        const dadosGps = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            user: session.label || session.user,
+                            ts: Date.now()
+                        };
+                        try {
+                            // Guarda na base de dados usando o NOME do jogador
+                            // Assim, nomes diferentes não se sobrescrevem
+                            await fetch(`${FIREBASE_BASE}/quiral_gps/${session.team}/${session.user}.json`, {
+                                method: 'PUT', body: JSON.stringify(dadosGps)
+                            });
+                        } catch(e) {}
+                    },
+                    (error) => {
+                        isGpsActive = false;
+                        btn.textContent = '📍 GPS: OFF';
+                        btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600');
+                        btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
+                        if (error.code === 1) mostrarToast("Tem de permitir o acesso à localização no navegador!");
+                        else mostrarToast("Falha de sinal GPS.");
+                    },
+                    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                );
+            }
+        }
+
+        async function syncPlayersOnMap() {
+            if (!map) return;
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_gps.json?nocache=${Date.now()}`);
+                const data = await res.json();
+                if (!data) return;
+
+                // Percorre a equipa Azul e a Amarela
+                ['azul', 'amarelo'].forEach(team => {
+                    const players = data[team] || {};
+                    Object.keys(players).forEach(user => {
+                        const p = players[user];
+                        
+                        // Ignora localizações com mais de 5 minutos (jogador desligou o GPS ou o ecrã)
+                        if (Date.now() - p.ts > 5 * 60 * 1000) return; 
+
+                        // O ID do marcador é único para cada equipa + nome (ex: azul_Falcão)
+                        const mId = team + '_' + user;
+                        const corClasse = team === 'azul' ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : 'bg-yellow-500 shadow-[0_0_8px_#eab308]';
+                        
+                        if (!leafletPlayerMarkers[mId]) {
+                            // Criar a bolinha com o nome do jogador
+                            const iconHTML = `
+                                <div class="w-3 h-3 rounded-full border-2 border-white ${corClasse} pulse"></div>
+                                <div class="text-[9px] text-white font-bold bg-black/70 px-1 rounded whitespace-nowrap mt-1 -ml-2 border border-gray-700">${p.user}</div>
+                            `;
+                            const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [12, 12], iconAnchor: [6, 6] });
+                            leafletPlayerMarkers[mId] = L.marker([p.lat, p.lng], {icon: icon}).addTo(map);
+                        } else {
+                            // Se já existe, só atualiza a posição
+                            leafletPlayerMarkers[mId].setLatLng([p.lat, p.lng]);
+                        }
+                    });
+                });
+            } catch(e) {}
+        }
+
+
+        // -------------------------------------------------------------
+        // INTERFACE BÁSICA (Modais, Login Otimizado, etc.)
+        // -------------------------------------------------------------
         function showModal(title, html) {
             document.querySelector('#modal-box h3').innerText = title; document.getElementById('modal-text').innerHTML = html;
             const box = document.getElementById('modal-box'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
@@ -396,201 +479,100 @@
         function closeModal() {
             const box = document.getElementById('modal-box'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200);
         }
+        
         function openLoginModal() {
             if (session) { logout(); return; }
-            document.getElementById('login-user').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden');
-            const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); document.getElementById('login-user').focus();
+            document.getElementById('login-user').value = '';
+            document.getElementById('login-pass').value = '';
+            document.getElementById('login-erro').classList.add('hidden');
+            toggleSenhaAdmin(); // Verifica estado atual do select
+            const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
         }
-        function closeLoginModal() { const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+        
+        function closeLoginModal() { 
+            const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); 
+        }
+        
+        function logout() { 
+            session = null; sessionStorage.removeItem('quiral_session'); 
+            if (isGpsActive) toggleGPS(); // Desliga gps ao sair
+            applySessionUI(); 
+        }
 
-        async function tentarLogin(userDigitado, senha) {
-            const res = await fetch(AUTH_URL + '?nocache=' + Date.now()); const contas = (await res.json()) || {}; const hash = await sha256(senha);
-            if (!contas.admin) {
-                const hashPadrao = await sha256('quiral2026');
-                if (userDigitado.toLowerCase() === 'admin' && hash === hashPadrao) {
-                    const conta = { user: 'admin', passHash: hashPadrao, role: 'admin', team: null, label: ROLE_LABELS.admin };
-                    await fetch(FIREBASE_BASE + '/quiral_auth/admin.json', { method: 'PUT', body: JSON.stringify(conta) }); return conta;
-                }
+        // Mostra a caixa de senha apenas se escolher "Administrador"
+        function toggleSenhaAdmin() {
+            const team = document.getElementById('login-team').value;
+            const divSenha = document.getElementById('div-senha');
+            if (team === 'admin') {
+                divSenha.classList.remove('hidden');
+            } else {
+                divSenha.classList.add('hidden');
             }
-            for (const key of ROLE_KEYS) {
-                const conta = contas[key];
-                if (conta && conta.user && conta.user.toLowerCase() === userDigitado.toLowerCase() && conta.passHash === hash) return conta;
-            }
-            return null;
+        }
+
+        async function sha256(texto) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
         async function autenticar() {
-            const u = document.getElementById('login-user').value.trim(); const p = document.getElementById('login-pass').value; if (!u || !p) return;
-            const conta = await tentarLogin(u, p);
-            if (conta) {
-                session = { role: conta.role, team: conta.team || null, label: conta.label || conta.user, user: conta.user };
-                sessionStorage.setItem('quiral_session', JSON.stringify(session)); closeLoginModal(); applySessionUI(); fetchComandos(); fetchMarcadores();
-            } else { document.getElementById('login-erro').classList.remove('hidden'); }
-        }
+            const u = document.getElementById('login-user').value.trim(); 
+            const team = document.getElementById('login-team').value;
+            const p = document.getElementById('login-pass').value; 
+            
+            if (!u && team !== 'admin') {
+                mostrarToast("Por favor, informe o seu Nome ou Callsign.");
+                return;
+            }
 
-        function logout() { 
-            if (isTransmittingGPS) toggleGPS(); // Para GPS se deslogar
-            session = null; sessionStorage.removeItem('quiral_session'); applySessionUI(); 
+            // Login do Administrador
+            if (team === 'admin') {
+                const hashDigitado = await sha256(p);
+                if (hashDigitado === "0a656a80479da751fbb3ce7c0ec72bb9b72cf72bb90f42b32525cc31f24d26eb") {
+                    session = { role: 'admin', team: null, label: 'Administrador', user: 'admin' };
+                    sessionStorage.setItem('quiral_session', JSON.stringify(session));
+                    closeLoginModal(); applySessionUI(); return;
+                } else {
+                    document.getElementById('login-erro').classList.remove('hidden');
+                    return;
+                }
+            }
+
+            // Login Simplificado para Jogadores
+            // Usa o nome limpo para criar o ID na base de dados, sem espaços e caracteres estranhos
+            const safeUserId = u.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+            
+            session = { 
+                role: 'jogador', 
+                team: team, // 'azul' ou 'amarelo'
+                label: u,   // Nome formatado para mostrar na UI e no Mapa
+                user: safeUserId 
+            };
+            
+            sessionStorage.setItem('quiral_session', JSON.stringify(session));
+            closeLoginModal(); 
+            applySessionUI();
         }
 
         function applySessionUI() {
             isAdmin = !!(session && session.role === 'admin');
             document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-salvar-layout').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-marcador').classList.toggle('hidden', !(session && session.role === 'comandante'));
-            document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
             
-            // Botão GPS visível apenas para jogadores/comandantes
             const btnGps = document.getElementById('btn-gps');
-            if (session && session.team) {
-                btnGps.classList.remove('hidden');
-            } else {
-                btnGps.classList.add('hidden');
-                if (isTransmittingGPS) toggleGPS(); 
-            }
-
-            const loginBtn = document.getElementById('btn-login'); const badge = document.getElementById('session-badge');
+            const loginBtn = document.getElementById('btn-login'); 
+            const badge = document.getElementById('session-badge');
+            
             if (session) {
-                loginBtn.textContent = 'SAIR'; const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
+                loginBtn.textContent = 'SAIR'; 
+                const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
                 badge.className = 'mt-2 text-xs ' + cor; badge.textContent = 'Conectado: ' + (session.label || session.user); badge.classList.remove('hidden');
-            } else {
-                loginBtn.textContent = '🔒 ENTRAR'; badge.classList.add('hidden'); comandosAtuais = {}; marcadoresAtuais = {}; renderMarcadoresLeaflet();
-            }
-            
-            // Atualizar permissão de arrastar marcadores de acordo com a sessão (Admin)
-            Object.values(nodeMarkersMap).forEach(marker => {
-                if (isAdmin) marker.dragging.enable();
-                else marker.dragging.disable();
-            });
-        }
-
-        function toggleGPS() {
-            if (!session || !session.team) return;
-            isTransmittingGPS = !isTransmittingGPS;
-            const btn = document.getElementById('btn-gps');
-            
-            if (isTransmittingGPS) {
-                btn.classList.add('bg-green-700', 'text-white', 'border-green-600');
-                btn.classList.remove('text-gray-500', 'border-gray-700');
-                btn.textContent = '📍 GPS: ON';
-                mostrarToast("Transmissão GPS ativada.");
                 
-                if ("geolocation" in navigator) {
-                    gpsWatchId = navigator.geolocation.watchPosition(
-                        (position) => {
-                            const dadosGps = {
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude,
-                                user: session.label || session.user,
-                                team: session.team,
-                                ts: Date.now()
-                            };
-                            escreverComRetry(`${FIREBASE_BASE}/quiral_gps/${session.team}/${session.user}.json`, {
-                                method: 'PUT', body: JSON.stringify(dadosGps)
-                            });
-                        },
-                        (error) => { console.warn("GPS Erro:", error.message); },
-                        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-                    );
-                } else {
-                    mostrarToast("GPS não suportado neste dispositivo.");
-                    toggleGPS(); // reverter visual
-                }
+                // Só jogadores podem usar GPS
+                if (session.team) btnGps.classList.remove('hidden'); else btnGps.classList.add('hidden');
             } else {
-                btn.classList.remove('bg-green-700', 'text-white', 'border-green-600');
-                btn.classList.add('text-gray-500', 'border-gray-700');
-                btn.textContent = '📍 GPS: OFF';
-                mostrarToast("Transmissão GPS desativada.");
-                
-                if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
-                // Remove rastro da base de dados (o player desaparece do mapa dos outros)
-                fetch(`${FIREBASE_BASE}/quiral_gps/${session.team}/${session.user}.json`, { method: 'DELETE' });
+                loginBtn.textContent = '🔒 ENTRAR'; badge.classList.add('hidden'); btnGps.classList.add('hidden');
             }
-        }
-
-        async function syncPlayersGPSMap() {
-            if (!lMap) return;
-            try {
-                const res = await fetch(`${GPS_URL}?nocache=${Date.now()}`);
-                const data = await res.json();
-                if (!data) return;
-
-                const now = Date.now();
-                const processedKeys = new Set();
-
-                ['azul', 'amarelo'].forEach(team => {
-                    const jogadores = data[team] || {};
-                    Object.keys(jogadores).forEach(userId => {
-                        const p = jogadores[userId];
-                        const markerId = `${team}_${userId}`;
-                        processedKeys.add(markerId);
-
-                        // Remove jogadores sem sinal há mais de 3 minutos
-                        if (now - p.ts > 3 * 60 * 1000) {
-                            if (playerMarkersMap[markerId]) {
-                                lMap.removeLayer(playerMarkersMap[markerId]);
-                                delete playerMarkersMap[markerId];
-                            }
-                            return;
-                        }
-
-                        // Se o marcador não existir, criamos. Se existir, atualizamos a posição.
-                        if (playerMarkersMap[markerId]) {
-                            playerMarkersMap[markerId].setLatLng([p.lat, p.lng]);
-                        } else {
-                            const cor = team === 'azul' ? '#3b82f6' : '#eab308';
-                            const html = `
-                                <div class="leaflet-player-icon">
-                                    <div class="player-pin" style="background-color: ${cor}"></div>
-                                    <div class="player-label">${p.user.substring(0, 4).toUpperCase()}</div>
-                                </div>
-                            `;
-                            const customIcon = L.divIcon({
-                                html: html,
-                                className: '',
-                                iconSize: [40, 40],
-                                iconAnchor: [20, 20]
-                            });
-
-                            playerMarkersMap[markerId] = L.marker([p.lat, p.lng], { icon: customIcon }).addTo(lMap);
-                        }
-                    });
-                });
-
-                // Limpa quem já não está na cloud ou desligou o transmissor
-                Object.keys(playerMarkersMap).forEach(key => {
-                    if (!processedKeys.has(key)) {
-                        lMap.removeLayer(playerMarkersMap[key]);
-                        delete playerMarkersMap[key];
-                    }
-                });
-
-            } catch(e) {}
-        }
-
-        let layoutPendente = false;
-
-        function marcarLayoutPendente() {
-            layoutPendente = true;
-            const btn = document.getElementById('btn-salvar-layout');
-            btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse');
-        }
-
-        async function salvarLayout() {
-            if (!isAdmin) return;
-            const btn = document.getElementById('btn-salvar-layout');
-            btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
-            const ok = await escreverComRetry(`${FIREBASE_BASE}/quiral_config/positions.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) }, 'Salvar layout');
-            layoutPendente = false; btn.textContent = ok ? 'SALVO ✔' : 'SEM SINAL — na fila';
-            setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 1800);
-        }
-
-        function onNodeTap(id) {
-            if (session && session.role === 'comandante') { openOrdemModal(id); return; }
-            showNodeDetail(id);
         }
 
         function showNodeDetail(id) {
@@ -602,334 +584,38 @@
                 if (isQuiral) extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>';
                 else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>';
             }
-            let ordemInfo = '';
-            if (session) {
-                const linhas = [];
-                ['azul', 'amarelo'].forEach(team => {
-                    const o = comandosAtuais[team] && comandosAtuais[team][id];
-                    if (o) linhas.push(`<span class="${team === 'azul' ? 'text-blue-400' : 'text-yellow-400'} font-bold">${team.toUpperCase()}</span>: ` + (o.ordem === 'atacar' ? '<span class="text-red-400 font-bold">⚔ ATACAR</span>' : '<span class="text-blue-300 font-bold">🛡 DEFENDER</span>'));
-                });
-                if (linhas.length) ordemInfo = '<br><br><span class="text-[10px] text-gray-500">Ordens:</span><br>' + linhas.join('<br>');
-            }
-            const hint = isAdmin ? '<br><br><span class="text-[10px] text-gray-500">Arraste o nó no mapa para reposicionar.</span>' : '';
-            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra + ordemInfo + hint);
+            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra);
         }
 
-        function openOrdemModal(id) {
-            ordemNodeAlvo = id; document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
-            const box = document.getElementById('ordem-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
-        }
-        function closeOrdemModal() { const box = document.getElementById('ordem-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); ordemNodeAlvo = null; }
-
-        async function emitirOrdem(tipo) {
-            if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
-            const id = ordemNodeAlvo; const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
-            if (tipo) {
-                await escreverComRetry(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) }, `Ordem nó ${id}`);
-                registrarHistoricoOrdem(id, tipo);
+        function updateStatusBadge(type, playing) {
+            const badge = document.getElementById('status-badge');
+            if (type === 'ok' && playing) {
+                badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse";
+            } else if (type === 'ok' && !playing) {
+                badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600";
             } else {
-                await escreverComRetry(path, { method: 'DELETE' }, `Cancelar ordem nó ${id}`);
-            }
-            await fetchComandos(); closeOrdemModal();
-        }
-
-        function registrarHistoricoOrdem(id, tipo) {
-            const chave = `o_${Date.now()}_n${id}`;
-            const entrada = { node: id, ordem: tipo, autor: session.label, ts: Date.now() };
-            escreverComRetry(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(entrada) }, 'Histórico de ordem');
-        }
-
-        function removerExpiradas(ordens) {
-            const limite = Date.now() - ORDEM_EXPIRA_MIN * 60 * 1000; const out = {};
-            Object.keys(ordens).forEach(id => { if (ordens[id] && ordens[id].ts && ordens[id].ts > limite) out[id] = ordens[id]; });
-            return out;
-        }
-
-        async function fetchComandos() {
-            if (!session) { comandosAtuais = {}; if (lastFullData) renderVisuals(lastFullData); return; }
-            try {
-                let novoEstado;
-                if (isAdmin) {
-                    const [resAzul, resAmarelo] = await Promise.all([
-                        fetch(`${FIREBASE_BASE}/quiral_comandos/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_comandos/amarelo.json?nocache=` + Date.now())
-                    ]);
-                    novoEstado = { azul: removerExpiradas(fromFirebaseKeyed(await resAzul.json())), amarelo: removerExpiradas(fromFirebaseKeyed(await resAmarelo.json())) };
-                } else if (session.team) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_comandos/${session.team}.json?nocache=` + Date.now());
-                    novoEstado = { [session.team]: removerExpiradas(fromFirebaseKeyed(await res.json())) };
-                } else { novoEstado = {}; }
-                
-                comandosAnteriores = novoEstado; comandosAtuais = novoEstado;
-            } catch (err) {}
-            // Atualiza labels no mapa
-            if (lastFullData) renderVisuals(lastFullData);
-        }
-
-        function ativarModoMarcador() {
-            if (!session || session.role !== 'comandante') return;
-            colocandoMarcador = !colocandoMarcador;
-            const btn = document.getElementById('btn-marcador'); document.getElementById('marcador-hint').classList.toggle('hidden', !colocandoMarcador);
-            btn.classList.toggle('bg-purple-700', colocandoMarcador); btn.textContent = colocandoMarcador ? '📍 TOQUE NO MAPA...' : '📍 MARCADOR';
-        }
-
-        async function criarMarcadorCloud(lat, lng, label) {
-            const chave = 'm_' + Date.now(); const dado = { lat, lng, label, ts: Date.now(), autor: session.label };
-            await escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }, 'Marcador tático'); await fetchMarcadores();
-        }
-
-        async function removerMarcador(team, chave) {
-            if (!session || session.role !== 'comandante' || session.team !== team) return;
-            if (!confirm('Remover este marcador?')) return;
-            await escreverComRetry(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }, 'Remover marcador'); await fetchMarcadores();
-        }
-
-        async function fetchMarcadores() {
-            if (!session) { marcadoresAtuais = {}; renderMarcadoresLeaflet(); return; }
-            try {
-                if (isAdmin) {
-                    const [ra, ry] = await Promise.all([ fetch(`${FIREBASE_BASE}/quiral_config/marcadores/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_config/marcadores/amarelo.json?nocache=` + Date.now()) ]);
-                    marcadoresAtuais = { azul: (await ra.json()) || {}, amarelo: (await ry.json()) || {} };
-                } else if (session.team) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}.json?nocache=` + Date.now()); marcadoresAtuais = { [session.team]: (await res.json()) || {} };
-                } else { marcadoresAtuais = {}; }
-            } catch (err) {}
-            renderMarcadoresLeaflet();
-        }
-
-        function renderMarcadoresLeaflet() {
-            if (!lMap) return;
-            
-            // Limpa antigos
-            Object.values(tacticalMarkersMap).forEach(m => lMap.removeLayer(m));
-            tacticalMarkersMap = {};
-
-            Object.keys(marcadoresAtuais).forEach(team => {
-                const marcadores = marcadoresAtuais[team] || {};
-                Object.keys(marcadores).forEach(chave => {
-                    const m = marcadores[chave]; if (!m) return;
-                    if (m.lat === undefined) return;
-
-                    const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
-                    const iconHtml = `<div style="display:flex; flex-direction:column; align-items:center; transform: translate(-50%, -100%); width: 100px;">
-                        <span class="text-2xl ${cor}" style="text-shadow:0 0 5px #000">📍</span>
-                        <span class="text-[10px] bg-black/80 ${cor} px-1 rounded whitespace-nowrap text-center">${(m.label || '').slice(0, 15)}</span>
-                    </div>`;
-
-                    const customIcon = L.divIcon({ html: iconHtml, className: '', iconSize: [0, 0] });
-                    const marker = L.marker([m.lat, m.lng], { icon: customIcon }).addTo(lMap);
-                    marker.on('click', () => removerMarcador(team, chave));
-                    tacticalMarkersMap[chave] = marker;
-                });
-            });
-        }
-
-        let isFetchingPositions = false;
-        async function fetchConfig() {
-            if (isFetchingPositions) return;
-            isFetchingPositions = true;
-            try {
-                const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions.json?nocache=${Date.now()}`);
-                const posData = await res.json();
-                if (posData && !layoutPendente) {
-                    const mapped = fromFirebaseKeyed(posData);
-                    Object.keys(mapped).forEach(id => {
-                        // Converter X/Y velho para lat/lng caso existam posições antigas no firebase
-                        if (mapped[id].lat === undefined && mapped[id].x !== undefined) {
-                            mapped[id].lat = CENTRO_DEFAULT.lat + ((mapped[id].y - 50) * -0.00005);
-                            mapped[id].lng = CENTRO_DEFAULT.lng + ((mapped[id].x - 50) * 0.00005);
-                        }
-                        nodePositions[id] = mapped[id];
-                    });
-                    if (lastFullData) renderVisuals(lastFullData);
-                }
-            } catch (err) {} finally { isFetchingPositions = false; }
-        }
-
-        let isMapCentered = false;
-
-        function renderVisuals(data) {
-            // 1. Renderiza Mini-Grid Radar Clássico
-            const isQuiral = data.md === "QUIRAL";
-            const miniGrid = document.getElementById('nodes-grid');
-            miniGrid.innerHTML = '';
-
-            data.nos.forEach((node, index) => {
-                const id = index + 1;
-                let cssClass = "offline"; let badgeColor = "bg-gray-800 border-gray-700 text-white/70";
-
-                if (node.online) {
-                    if (isQuiral) {
-                        cssClass = node.ativo ? "active-green" : "inactive-red";
-                        badgeColor = node.ativo ? "bg-green-900 border-green-600 text-white/70" : "bg-red-900 border-red-600 text-white/70";
-                    } else {
-                        if (node.owner === 1) { cssClass = "active-blue"; badgeColor = "bg-blue-900 border-blue-600 text-white/70"; }
-                        else if (node.owner === 2) { cssClass = "active-yellow"; badgeColor = "bg-yellow-900 border-yellow-600 text-white/70"; }
-                        else { cssClass = "neutral-white"; badgeColor = "bg-gray-200 border-gray-400 text-black"; }
-                    }
-                }
-                miniGrid.innerHTML += `<div class="h-4 md:h-6 rounded border ${badgeColor} flex items-center justify-center text-[8px] md:text-[10px] font-bold">${id}</div>`;
-            });
-
-            // 2. Renderiza Mapa Leaflet
-            if (!lMap) return;
-
-            const boundsArr = [];
-
-            data.nos.forEach((node, index) => {
-                const id = index + 1;
-                let bgColor = "#1f2937"; let borderColor = "#4b5563"; let textColor = "#ffffff";
-                
-                if (node.online) {
-                    if (isQuiral) {
-                        bgColor = node.ativo ? "#22c55e" : "#ef4444"; borderColor = node.ativo ? "#4ade80" : "#f87171";
-                    } else {
-                        if (node.owner === 1) { bgColor = "#3b82f6"; borderColor = "#60a5fa"; }
-                        else if (node.owner === 2) { bgColor = "#eab308"; borderColor = "#fde047"; textColor = "#000000"; }
-                        else { bgColor = "#ffffff"; borderColor = "#e5e7eb"; textColor = "#000000"; }
-                    }
-                }
-
-                // Verifica ordens pendentes
-                let ordemBadge = "";
-                if (session) {
-                    if (comandosAtuais['azul'] && comandosAtuais['azul'][id]) { ordemBadge += comandosAtuais['azul'][id].ordem === 'atacar' ? " ⚔" : " 🛡"; }
-                    if (comandosAtuais['amarelo'] && comandosAtuais['amarelo'][id]) { ordemBadge += comandosAtuais['amarelo'][id].ordem === 'atacar' ? " ⚔" : " 🛡"; }
-                }
-
-                let pos = nodePositions[id];
-                
-                // SISTEMA DE SEGURANÇA: Se o nó salvo na nuvem estiver muito longe (ex: preso em Portugal)
-                // nós anulamos essa posição para que ele salte para perto do seu centro no Brasil.
-                if (pos && pos.lat !== undefined) {
-                    const distLat = Math.abs(pos.lat - CENTRO_DEFAULT.lat);
-                    const distLng = Math.abs(pos.lng - CENTRO_DEFAULT.lng);
-                    if (distLat > 2 || distLng > 2) { pos = undefined; }
-                }
-
-                if (!pos || pos.lat === undefined) {
-                    pos = { lat: CENTRO_DEFAULT.lat + (id*0.0003), lng: CENTRO_DEFAULT.lng + (id*0.0003) };
-                    nodePositions[id] = pos;
-                    if (isAdmin) marcarLayoutPendente();
-                }
-                
-                boundsArr.push([pos.lat, pos.lng]);
-
-                const iconHtml = `<div class="leaflet-node-icon" style="background-color: ${bgColor}; border-color: ${borderColor}; color: ${textColor}; width: 28px; height: 28px;">
-                    ${id}
-                </div><div style="position:absolute; top:-10px; right:-10px; font-size:10px;">${ordemBadge}</div>`;
-
-                const customIcon = L.divIcon({ html: iconHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
-
-                if (!nodeMarkersMap[id]) {
-                    const marker = L.marker([pos.lat, pos.lng], { icon: customIcon, draggable: isAdmin }).addTo(lMap);
-                    
-                    marker.on('click', () => onNodeTap(id));
-                    marker.on('dragend', (e) => {
-                        if (isAdmin) {
-                            const newPos = e.target.getLatLng();
-                            nodePositions[id] = { lat: newPos.lat, lng: newPos.lng };
-                            marcarLayoutPendente();
-                        }
-                    });
-                    nodeMarkersMap[id] = marker;
-                } else {
-                    const m = nodeMarkersMap[id];
-                    if (isAdmin) m.dragging.enable(); else m.dragging.disable();
-                    m.setLatLng([pos.lat, pos.lng]);
-                    m.setIcon(customIcon);
-                }
-            });
-
-            // Focar o mapa (FitBounds) apenas na primeira vez que recebe os nós
-            if (!isMapCentered && boundsArr.length > 0) {
-                lMap.fitBounds(boundsArr, { padding: [20, 20], maxZoom: 18 });
-                isMapCentered = true;
+                badge.innerText = "FALHA DE SINAL FIREBASE"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-red-900/50 text-red-400 border border-red-600 pulse";
             }
         }
 
-        const recentEvents = new Map();
-        function registrarEventoUnico(sigBase, html) {
-            const now = Date.now();
-            for (const [k, v] of recentEvents.entries()) { if (now - v > 15000) recentEvents.delete(k); }
-            if (recentEvents.has(sigBase)) return;
-            recentEvents.set(sigBase, now);
-            saveLogToCloud(sigBase, html);
+        function mostrarToast(texto) {
+            const el = document.getElementById('toast'); el.textContent = texto; el.classList.remove('hidden', 'opacity-0');
+            setTimeout(() => { el.classList.add('opacity-0'); setTimeout(() => el.classList.add('hidden'), 300); }, 3000);
         }
 
-        function addLog(key, html, timeStr) {
-            if (renderedLogKeys.has(key)) return;
-            renderedLogKeys.add(key);
-            const box = document.getElementById('log-box');
-            if (box.dataset.empty === '1') { box.innerHTML = ''; box.dataset.empty = '0'; }
-            const row = document.createElement('div'); row.className = 'log-entry border-b border-gray-800/60 pb-1';
-            row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> ${html}`;
-            box.prepend(row);
-        }
-
-        async function saveLogToCloud(key, html) {
-            const timeStr = new Date().toLocaleTimeString('pt-PT', { hour12: false });
-            addLog(key, html, timeStr);
-            try { await fetch(`${FIREBASE_BASE}/quiral_logs/${key}.json`, { method: 'PUT', body: JSON.stringify({ t: timeStr, m: html, ts: Date.now() }) }); } catch (err) {}
-        }
-
-        async function fetchCloudLogs() {
-            try {
-                const res = await fetch(LOGS_URL + '?nocache=' + Date.now());
-                const data = await res.json();
-                if (!data) {
-                    if (renderedLogKeys.size > 0) {
-                        renderedLogKeys.clear();
-                        document.getElementById('log-box').innerHTML = '';
-                        document.getElementById('log-box').dataset.empty = '1';
-                    }
-                    return;
-                }
-                const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
-                entries.forEach(entry => addLog(entry.key, entry.m, entry.t));
-            } catch (err) {}
-        }
-
-        function analisarLogs(newData) {
-            if (!lastNodesData) return;
-            const isQuiral = newData.md === "QUIRAL";
-            const tp = (newData.tp || '00:00').replace(/:/g, '');
-            const placar = ` <span class="text-gray-500">[${newData.az}x${newData.am}]</span>`;
-
-            newData.nos.forEach((node, i) => {
-                const prev = lastNodesData[i]; if (!prev) return; const id = i + 1;
-                if (node.online !== prev.online) {
-                    const msg = node.online ? `Nó ${id} <span class="text-green-400">voltou a ficar em linha</span>.` : `Nó ${id} <span class="text-gray-400 font-bold">perdeu conexão (offline)</span>.`;
-                    registrarEventoUnico(`n${id}_net${node.online ? 1 : 0}_${tp}`, msg);
-                }
-                if (!isQuiral && node.owner !== prev.owner && node.online) {
-                    if (node.owner === 1) registrarEventoUnico(`n${id}_own1_${tp}`, `Nó ${id} dominado pelo <span class="text-blue-400 font-bold">AZUL</span>.${placar}`);
-                    else if (node.owner === 2) registrarEventoUnico(`n${id}_own2_${tp}`, `Nó ${id} dominado pelo <span class="text-yellow-400 font-bold">AMARELO</span>.${placar}`);
-                    else if (node.owner === 0 && prev.owner !== 0) registrarEventoUnico(`n${id}_own0_${tp}`, `Nó ${id} <span class="text-gray-400 font-bold">NEUTRALIZADO</span>.${placar}`);
-                }
-            });
-        }
-
-        async function startNewMatchLogs() {
-            renderedLogKeys.clear(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1';
-            recentEvents.clear();
-            try { await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
-            try { await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
-            try { await fetch(ORDENS_LOG_URL, { method: 'PUT', body: 'null' }); } catch (err) {}
-            try { await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' }); } catch (err) {}
-            comandosAtuais = {}; comandosAnteriores = null; marcadoresAtuais = {};
-            if (lastFullData) renderVisuals(lastFullData); renderMarcadoresLeaflet();
-            saveLogToCloud('sys_start', '<span class="text-green-400 font-bold">SISTEMA ARMADO.</span> Nova Partida!');
-        }
-
+        // -------------------------------------------------------------
+        // LAÇO PRINCIPAL (FETCH DOS DADOS DO JOGO)
+        // -------------------------------------------------------------
         async function fetchUplinkData() {
             try {
-                const response = await fetch(GAME_URL + "?nocache=" + Date.now());
+                const response = await fetch("https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json?nocache=" + Date.now());
                 const data = await response.json();
                 if (!data) return;
 
                 lastSuccessfulFetch = Date.now();
                 lastFullData = data;
                 document.getElementById('last-update').innerText = new Date().toLocaleTimeString('pt-PT');
+                document.getElementById('conn-detail').innerText = 'Ligação Estabelecida';
 
                 const isPlaying = (data.st === "ON");
                 document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0";
@@ -937,76 +623,51 @@
                 document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00";
                 document.getElementById('game-mode').innerText = "MODO: " + (data.md || "--");
 
-                const badge = document.getElementById('status-badge');
-                if (isPlaying) {
-                    badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse";
-                } else {
-                    badge.innerText = "SISTEMA OCIOSO / AGUARDANDO LIGAÇÃO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-gray-800 text-gray-500 border border-gray-600";
-                }
-
-                if (lastGameState !== null) {
-                    if (isPlaying && lastGameState === "OFF") await startNewMatchLogs();
-                    else if (!isPlaying && lastGameState === "ON") registrarEventoUnico('sys_stop', `<span class="text-red-500 font-bold">JOGO ENCERRADO.</span>`);
-                }
-                lastGameState = data.st;
+                updateStatusBadge('ok', isPlaying);
 
                 if (data.nos && Array.isArray(data.nos)) {
-                    document.getElementById('node-count').textContent = `(${data.nos.filter(n => n.online).length}/${data.nos.length} em linha)`;
-                    if (isPlaying) analisarLogs(data);
+                    const online = data.nos.filter(n => n.online).length;
+                    document.getElementById('node-count').textContent = `(${online}/${data.nos.length} online)`;
                     renderVisuals(data);
-                    lastNodesData = JSON.parse(JSON.stringify(data.nos));
                 }
-            } catch (error) { document.getElementById('status-badge').className = "mt-2 inline-block px-3 py-1 rounded text-xs font-bold bg-red-900/50 text-red-400 border border-red-600 pulse"; }
-        }
-
-        function tickConnDetail() {
-            const el = document.getElementById('conn-detail'); if (!lastSuccessfulFetch) return;
-            const secs = Math.floor((Date.now() - lastSuccessfulFetch) / 1000);
-            if (secs < 4) { el.textContent = 'Atualizado agora mesmo'; el.className = 'text-[10px] text-gray-600 mt-1'; }
-            else if (secs < 15) { el.textContent = `Atualizado há ${secs}s`; el.className = 'text-[10px] text-gray-600 mt-1'; }
-            else { el.textContent = `SEM DADOS NOVOS HÁ ${secs}s — a mostrar último estado conhecido`; el.className = 'text-[10px] text-amber-500 mt-1 font-bold'; }
+            } catch (error) { updateStatusBadge('error', false); document.getElementById('conn-detail').innerText = 'Falha na Ligação DB'; }
         }
 
         function toggleModoNoturno() { document.body.classList.toggle('modo-noturno'); }
-        async function toggleWakeLock() { /* Simplificado wakeLock */ }
+        async function toggleWakeLock() {
+            if (wakeLock) { try { await wakeLock.release(); } catch(e){} wakeLock = null; mostrarToast('Tela Normal'); }
+            else { try { wakeLock = await navigator.wakeLock.request('screen'); mostrarToast('Tela Ligada Ativa'); } catch(e){} }
+        }
+        document.getElementById('btn-fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(()=>{}); else document.exitFullscreen?.();
+        });
 
-        function bootDashboard() {
+        // -------------------------------------------------------------
+        // BOOT DO SISTEMA
+        // -------------------------------------------------------------
+        async function bootDashboard() {
+            applySessionUI();
+            
+            // 1. CARREGA O MAPA IMEDIATAMENTE (Não espera pela BD)
             initLeafletMap();
-            applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
-            fetchConfig();
+            
+            // 2. Busca posições guardadas
+            await fetchPositions();
+            
+            // 3. Primeira busca de dados do jogo
             fetchUplinkData();
-            fetchCloudLogs();
-            if (session) { fetchComandos(); fetchMarcadores(); }
             
-            setInterval(fetchUplinkData, 2000); 
-            setInterval(fetchCloudLogs, 2500); 
-            setInterval(tickConnDetail, 1000);
-            setInterval(syncPlayersGPSMap, 3000); // Polling GPS
-            setInterval(() => { if (session) { fetchComandos(); fetchMarcadores(); } }, 3000);
-            setInterval(fetchConfig, 8000); 
-            setInterval(processarFilaEscritas, 5000);
-            
-            document.getElementById('btn-reset-logs').addEventListener('click', async () => {
-                if (!confirm('Limpar registos e marcadores?')) return;
-                await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); await fetch(COMANDOS_URL, { method: 'PUT', body: 'null' });
-                await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' });
-                renderedLogKeys.clear(); comandosAtuais = {}; marcadoresAtuais = {};
-                renderMarcadoresLeaflet(); document.getElementById('log-box').innerHTML = '';
-            });
-            document.getElementById('btn-fullscreen').addEventListener('click', () => {
-                if (!document.fullscreenElement) document.documentElement.requestFullscreen?.(); else document.exitFullscreen?.();
-            });
+            // 4. Inicia os relógios (Timers)
+            setInterval(fetchUplinkData, 2000);
+            setInterval(fetchPositions, 10000); // Atualiza posições dos nós se o admin arrastar noutro telemóvel
+            setInterval(syncPlayersOnMap, 3000); // Procura movimento dos jogadores no GPS
         }
 
-        // Auth accounts setup / Histórico omitidos para brevidade mas mantidos shell
-        async function openContasModal() { /* Mesmo código original de contas */ }
-        function closeContasModal() { /* Mesmo código original de contas */ }
-        async function exportarLog() { /* Mesmo código original de exportar */ }
-        async function openHistoricoModal() { /* Mesmo código original de historico */ }
-        function closeHistoricoModal() { /* Mesmo código original de historico */ }
+        // Iniciar
+        window.addEventListener('load', bootDashboard);
 
-        // Dá tempo ao DOM para desenhar a DIV antes de injetar o Leaflet
-        window.addEventListener('DOMContentLoaded', bootDashboard);
     </script>
 </body>
 </html>
+
+
