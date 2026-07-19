@@ -28,7 +28,7 @@
 
         /* Estilos para os Marcadores (Nós) no Leaflet */
         .custom-node-icon { background: transparent; border: none; }
-        .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; cursor: pointer; }
+        .map-node { transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s; cursor: pointer; pointer-events: auto; }
         .map-node.admin-mode { cursor: grab; }
         .map-node.admin-mode:active { cursor: grabbing; }
         
@@ -272,7 +272,7 @@
             try {
                 document.getElementById('map-placeholder').classList.add('hidden');
                 
-                map = L.map('leaflet-map', { zoomControl: false }).setView(CENTRO_MAPA, 18);
+                map = L.map('leaflet-map', { zoomControl: false, tap: false }).setView(CENTRO_MAPA, 18);
                 L.control.zoom({ position: 'topright' }).addTo(map);
 
                 const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -290,10 +290,14 @@
                 // Evento de clique no mapa para Comandantes adicionarem Marcadores
                 map.on('click', function(e) {
                     if (!colocandoMarcador || !session || session.role !== 'comandante') return;
-                    ativarModoMarcador(); // Desliga o modo de inserção
+                    
+                    // Desliga o modo após o primeiro clique
+                    ativarModoMarcador(); 
+                    
                     const label = prompt('Nome do marcador (ex: "Reagrupar aqui"):');
-                    if (label === null) return;
-                    criarMarcador(e.latlng.lat, e.latlng.lng, label.trim() || 'Marcador');
+                    if (label === null || label.trim() === '') return;
+                    
+                    criarMarcador(e.latlng.lat, e.latlng.lng, label.trim());
                 });
 
             } catch (err) { console.error("Erro Leaflet:", err); }
@@ -331,7 +335,7 @@
 
                 if (!leafletNodeMarkers[id]) {
                     const iconHTML = `
-                        <div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto ${cssClass} ${isAdmin ? 'admin-mode' : ''}">
+                        <div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto ${cssClass} ${isAdmin ? 'admin-mode' : ''}" onclick="onNodeTap(${id}, event)">
                             ${id}
                             <span id="ordem-badge-azul-${id}" class="ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300"></span>
                             <span id="ordem-badge-amarelo-${id}" class="ordem-badge hidden absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-yellow-300"></span>
@@ -352,11 +356,7 @@
                         marcarLayoutPendente();
                     });
 
-                    // Usa os dois eventos do Leaflet para captar todos os tipos de touch/mouse
-                    marker.on('click', function(e) {
-                        L.DomEvent.stopPropagation(e); // Impede que o clique "vaze" para o mapa
-                        onNodeTap(id); 
-                    });
+                    // Remove the old marker.on('click') binding, rely on onclick attribute
                     
                     leafletNodeMarkers[id] = marker;
                 } else {
@@ -378,7 +378,11 @@
         // -------------------------------------------------------------
         // SISTEMA DE ORDENS E MARCADORES (COMANDO)
         // -------------------------------------------------------------
-        function onNodeTap(id) {
+        function onNodeTap(id, event) {
+            if (event) {
+                event.stopPropagation(); // Prevents map click when clicking node
+                event.preventDefault();
+            }
             if (session && session.role === 'comandante') { openOrdemModal(id); return; }
             showNodeDetail(id);
         }
@@ -453,7 +457,13 @@
             const btn = document.getElementById('btn-marcador'); 
             document.getElementById('marcador-hint').classList.toggle('hidden', !colocandoMarcador);
             btn.classList.toggle('bg-purple-700', colocandoMarcador); 
+            btn.classList.toggle('bg-purple-950', !colocandoMarcador); 
             btn.textContent = colocandoMarcador ? '📍 TOQUE NO MAPA...' : '📍 MARCADOR';
+            
+            // Modify map cursor to indicate targeting mode
+            if (map && map.getContainer()) {
+                map.getContainer().style.cursor = colocandoMarcador ? 'crosshair' : '';
+            }
         }
 
         async function criarMarcador(lat, lng, label) {
