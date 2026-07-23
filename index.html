@@ -323,8 +323,16 @@
                 
                 L.control.zoom({ position: 'topright' }).addTo(map);
 
-                const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri' });
-                const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+                const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { 
+                    maxZoom: 22,       // Até onde o jogador pode dar zoom (Nível extremo)
+                    maxNativeZoom: 17, // Limite real das fotos. A partir daqui, ele "estica" a imagem em vez de dar erro.
+                    attribution: 'Tiles &copy; Esri' 
+                });
+                const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+                    maxZoom: 22, 
+                    maxNativeZoom: 19,
+                    attribution: '&copy; OpenStreetMap' 
+                });
 
                 satelite.addTo(map);
                 L.control.layers({ "Satélite (Mato)": satelite, "Mapa (Ruas)": ruas }, null, {position: 'topright'}).addTo(map);
