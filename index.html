@@ -531,22 +531,41 @@
         async function criarMarcador(lat, lng, label) {
             const chave = 'm_' + Date.now(); 
             const dado = { lat: parseFloat(lat), lng: parseFloat(lng), label: label || 'Alvo Tático', ts: Date.now(), autor: session.label };
+            
+            // ATUALIZAÇÃO OTIMISTA: Desenha instantaneamente no mapa sem esperar pela internet!
+            if (!marcadoresAtuais[session.team]) marcadoresAtuais[session.team] = {};
+            marcadoresAtuais[session.team][chave] = dado;
+            renderMarcadores();
+
             try {
-                mostrarToast("A enviar coordenadas...");
+                mostrarToast("A sincronizar alvo com satélite...");
                 const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }); 
-                if (!res.ok) throw new Error("Falha na BD");
-                mostrarToast("📍 Alvo marcado com sucesso!");
-                await fetchMarcadores();
-            } catch(e) { mostrarToast("Erro ao gravar. Verifique a internet."); }
+                
+                if (!res.ok) {
+                    throw new Error("Erro " + res.status + " (Regras da Firebase bloqueadas)");
+                }
+                
+                mostrarToast("📍 Alvo sincronizado com o esquadrão!");
+            } catch(e) { 
+                mostrarToast("Aviso: " + e.message + " - Marcador visível apenas para si."); 
+            }
         }
 
         async function removerMarcador(team, chave) {
             if (!session || session.role !== 'comandante' || session.team !== team) return;
+            
+            // ATUALIZAÇÃO OTIMISTA: Apaga instantaneamente do mapa
+            if (marcadoresAtuais[team] && marcadoresAtuais[team][chave]) {
+                delete marcadoresAtuais[team][chave];
+                renderMarcadores();
+            }
+
             try {
                 await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }); 
                 mostrarToast("Marcador removido.");
-                await fetchMarcadores();
-            } catch(e) { mostrarToast("Erro ao remover."); }
+            } catch(e) { 
+                mostrarToast("Erro ao apagar na nuvem."); 
+            }
         }
 
         async function fetchMarcadores() {
