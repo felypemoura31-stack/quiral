@@ -8,7 +8,6 @@
     <!-- CONEXÃO PWA / INSTALAÇÃO ANDROID -->
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
-    <!-- Removendo o ícone provisório em base64 -->
     
     <meta name="theme-color" content="#050505">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -126,7 +125,7 @@
         </div>
     </div>
 
-    <!-- MODAL: NOME DO MARCADOR -->
+    <!-- MODAL: NOME DO MARCADOR (Evita bloqueio de prompts no PWA/Mobile) -->
     <div id="marcador-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[3500] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full text-center">
             <h3 class="text-xl text-purple-400 mb-4 font-bold">NOVO MARCADOR</h3>
@@ -200,7 +199,7 @@
                 </div>
 
                 <p id="admin-hint" class="text-[10px] text-gray-500 mb-2 text-center hidden">Modo Edição Ativado: arraste os nós (1, 2...) no mapa e depois toque em "SALVAR LAYOUT".</p>
-                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mb-2 text-center font-bold">Mova o mapa para colocar o alvo no sítio certo e toque em CONFIRMAR ALVO.</p>
+                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mb-2 text-center font-bold">Mova o mapa para colocar o alvo no sítio exato da cruz e toque em CONFIRMAR ALVO.</p>
 
                 <!-- O CONTAINER DO MAPA -->
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded z-0 flex-1 min-h-[400px] md:min-h-[500px]">
@@ -250,7 +249,7 @@
         const AUTH_URL = FIREBASE_BASE + "/quiral_auth.json";
         const LOGS_URL = FIREBASE_BASE + "/quiral_logs.json";
         
-        // --- COORDENADAS REAIS DO SEU CAMPO (Caldas Novas, GO) ---
+        // --- COORDENADAS REAIS DO SEU CAMPO ---
         const CENTRO_MAPA = [-17.763466, -48.649717];
         
         let session = null;
@@ -268,7 +267,8 @@
         let marcadoresAtuais = {};
         let ordemNodeAlvo = null;
         let colocandoMarcador = false;
-        let pendingMarkerCoords = null; // Guarda as coordenadas do toque
+        let pendingMarkerCoords = null; // Guarda as coordenadas do toque do Comandante
+        
         // Estado do Mapa Leaflet
         let map = null;
         let leafletNodeMarkers = {}; // Guarda as bases
@@ -287,33 +287,193 @@
         const ROLE_KEYS = ['admin', 'comandante_azul', 'jogador_azul', 'comandante_amarelo', 'jogador_amarelo'];
         const ROLE_LABELS = { admin: 'Administrador', comandante_azul: 'Comandante Azul', jogador_azul: 'Jogador Azul', comandante_amarelo: 'Comandante Amarelo', jogador_amarelo: 'Jogador Amarelo' };
 
-        // -------------------------------------------------------------
-        // SISTEMA DE MARCADORES (COMANDO) - BLINDADO
-        // -------------------------------------------------------------
+        // =============================================================
+        // 1. INICIALIZAÇÃO DO MAPA LEAFLET
+        // =============================================================
+        function initLeafletMap() {
+            if (map) return;
+            try {
+                document.getElementById('map-placeholder').classList.add('hidden');
+                
+                map = L.map('leaflet-map', { 
+                    zoomControl: false,
+                    tap: false // Corrige conflitos de toques no iOS/Android
+                }).setView(CENTRO_MAPA, 18);
+                
+                L.control.zoom({ position: 'topright' }).addTo(map);
+
+                const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri' });
+                const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+
+                satelite.addTo(map);
+                L.control.layers({ "Satélite (Mato)": satelite, "Mapa (Ruas)": ruas }, null, {position: 'topright'}).addTo(map);
+
+                setTimeout(() => { map.invalidateSize(); }, 600);
+            } catch (err) { console.error("Erro Leaflet:", err); }
+        }
+
+        // =============================================================
+        // 2. DESENHO DAS BASES/NÓS NO MAPA
+        // =============================================================
+        function renderVisuals(data) {
+            if (!map) return;
+            const isQuiral = data.md === "QUIRAL";
+            
+            data.nos.forEach((node, index) => {
+                const id = index + 1;
+                
+                let cssClass = "offline";
+                if (node.online) {
+                    if (isQuiral) { cssClass = node.ativo ? "active-green" : "inactive-red"; }
+                    else {
+                        if (node.owner === 1) cssClass = "active-blue";
+                        else if (node.owner === 2) cssClass = "active-yellow";
+                        else cssClass = "neutral-white";
+                    }
+                }
+                
+                let pos = nodePositions[id];
+                let latValid = pos && typeof pos.lat === 'number';
+                let isTooFar = latValid && (Math.abs(pos.lat - CENTRO_MAPA[0]) > 0.5); 
+                
+                if (!pos || !latValid || isTooFar) {
+                    const offsetLat = (Math.random() - 0.5) * 0.0015;
+                    const offsetLng = (Math.random() - 0.5) * 0.0015;
+                    pos = { lat: CENTRO_MAPA[0] + offsetLat, lng: CENTRO_MAPA[1] + offsetLng };
+                    nodePositions[id] = pos;
+                }
+
+                if (!leafletNodeMarkers[id]) {
+                    // HTML do Nó
+                    const iconHTML = `
+                        <div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass} ${isAdmin ? 'admin-mode' : ''} pointer-events-auto">
+                            ${id}
+                            <span id="ordem-badge-azul-${id}" class="ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300"></span>
+                            <span id="ordem-badge-amarelo-${id}" class="ordem-badge hidden absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-yellow-300"></span>
+                        </div>
+                    `;
+                    
+                    const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [32, 32], iconAnchor: [16, 16] });
+                    const marker = L.marker([pos.lat, pos.lng], { icon: icon, draggable: isAdmin }).addTo(map);
+
+                    marker.on('dragend', function(e) {
+                        if (!isAdmin) return;
+                        const newPos = e.target.getLatLng();
+                        nodePositions[id] = { lat: newPos.lat, lng: newPos.lng };
+                        marcarLayoutPendente();
+                    });
+
+                    // Clicar para dar ordens/ver detalhes (com stopPropagation para não arrastar o mapa sem querer)
+                    marker.on('click', function(e) {
+                        L.DomEvent.stopPropagation(e);
+                        onNodeTap(id); 
+                    });
+
+                    leafletNodeMarkers[id] = marker;
+                } else {
+                    const marker = leafletNodeMarkers[id];
+                    const divEl = document.getElementById(`map-node-${id}`);
+                    if (divEl) { divEl.className = `map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass} ${isAdmin ? 'admin-mode' : ''} pointer-events-auto`; }
+
+                    if (marker.options.draggable !== isAdmin) {
+                        if (isAdmin) marker.dragging.enable(); else marker.dragging.disable();
+                        marker.options.draggable = isAdmin;
+                    }
+                    if (!isAdmin) marker.setLatLng([pos.lat, pos.lng]);
+                }
+            });
+            renderComandosOverlay(); 
+        }
+
+        function onNodeTap(id) {
+            if (session && session.role === 'comandante') { openOrdemModal(id); return; }
+            showNodeDetail(id);
+        }
+
+        function showNodeDetail(id) {
+            const node = (lastFullData && lastFullData.nos && lastFullData.nos[id - 1]) || null; if (!node) { showModal('NÓ ' + id, 'Sem dados disponíveis ainda.'); return; }
+            let estado = node.online ? '<span class="text-green-400">EM LINHA</span>' : '<span class="text-red-400">OFFLINE</span>'; let extra = '';
+            if (node.online) { if (lastFullData.md === 'QUIRAL') extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>'; else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>'; }
+            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra);
+        }
+
+        // =============================================================
+        // 3. ORDENS TÁTICAS (Comandante)
+        // =============================================================
+        function openOrdemModal(id) {
+            ordemNodeAlvo = id; document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
+            const box = document.getElementById('ordem-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+        }
+        function closeOrdemModal() { const box = document.getElementById('ordem-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); ordemNodeAlvo = null; }
+
+        async function emitirOrdem(tipo) {
+            if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
+            const id = ordemNodeAlvo; const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
+            try {
+                if (tipo) {
+                    await fetch(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) });
+                    const chave = `o_${Date.now()}_n${id}`;
+                    await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify({ node: id, ordem: tipo, autor: session.label, ts: Date.now() }) });
+                } else {
+                    await fetch(path, { method: 'DELETE' });
+                }
+                await fetchComandos(); 
+            } catch(e) { mostrarToast("Erro ao emitir ordem."); }
+            closeOrdemModal();
+        }
+
+        function removerExpiradas(ordens) {
+            const limite = Date.now() - 15 * 60 * 1000; const out = {};
+            Object.keys(ordens).forEach(id => { if (ordens[id] && ordens[id].ts && ordens[id].ts > limite) out[id] = ordens[id]; });
+            return out;
+        }
+
+        async function fetchComandos() {
+            if (!session) { comandosAtuais = {}; renderComandosOverlay(); return; }
+            try {
+                let novoEstado = {};
+                if (isAdmin) {
+                    const [resAzul, resAmarelo] = await Promise.all([ fetch(`${FIREBASE_BASE}/quiral_comandos/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_comandos/amarelo.json?nocache=` + Date.now()) ]);
+                    novoEstado = { azul: removerExpiradas(fromFirebaseKeyed(await resAzul.json())), amarelo: removerExpiradas(fromFirebaseKeyed(await resAmarelo.json())) };
+                } else if (session.team) {
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_comandos/${session.team}.json?nocache=` + Date.now());
+                    novoEstado = { [session.team]: removerExpiradas(fromFirebaseKeyed(await res.json())) };
+                }
+                comandosAtuais = novoEstado;
+            } catch (err) {}
+            renderComandosOverlay();
+        }
+
+        function renderComandosOverlay() {
+            document.querySelectorAll('.ordem-badge').forEach(b => { b.textContent = ''; b.classList.add('hidden'); b.classList.remove('bg-red-600', 'bg-blue-600', 'text-white'); });
+            Object.keys(comandosAtuais).forEach(team => {
+                const ordens = comandosAtuais[team] || {};
+                Object.keys(ordens).forEach(id => {
+                    const o = ordens[id]; if (!o || !o.ordem) return;
+                    const badge = document.getElementById(`ordem-badge-${team}-${id}`); if (!badge) return;
+                    badge.textContent = o.ordem === 'atacar' ? '⚔' : '🛡'; 
+                    badge.classList.remove('hidden'); badge.classList.add('text-white', o.ordem === 'atacar' ? 'bg-red-600' : 'bg-blue-600');
+                });
+            });
+        }
+
+        // =============================================================
+        // 4. MARCADORES TÁTICOS (ESTILO UBER)
+        // =============================================================
         function handleMarcadorClick() {
             try {
                 if (!session || session.role !== 'comandante') {
                     mostrarToast("Apenas comandantes podem usar esta ferramenta.");
                     return;
                 }
-
                 if (!colocandoMarcador) {
-                    // Ativar modo de mira
                     colocandoMarcador = true;
                     updateMarcadorUI();
                     mostrarToast("Mova o mapa para apontar o alvo ✛");
                 } else {
-                    // Confirmar posição!
-                    if(!map) {
-                        mostrarToast("Erro: Mapa não carregado.");
-                        return;
-                    }
+                    if(!map) { mostrarToast("Erro: Mapa não carregado."); return; }
                     
                     const center = map.getCenter();
-                    if (!center || typeof center.lat !== 'number') {
-                        throw new Error("Mapa não devolveu centro válido.");
-                    }
-                    
                     pendingMarkerCoords = { lat: center.lat, lng: center.lng };
                     
                     colocandoMarcador = false;
@@ -324,7 +484,6 @@
                     input.value = '';
                     box.classList.remove('hidden');
                     
-                    // Foca a caixa de texto automaticamente
                     requestAnimationFrame(() => {
                         box.classList.remove('opacity-0');
                         input.focus();
@@ -332,8 +491,7 @@
                 }
             } catch (err) {
                 mostrarToast("Erro no Marcador: " + err.message);
-                colocandoMarcador = false;
-                updateMarcadorUI();
+                colocandoMarcador = false; updateMarcadorUI();
             }
         }
 
@@ -359,17 +517,12 @@
 
         function cancelarMarcador() {
             const box = document.getElementById('marcador-modal');
-            box.classList.add('opacity-0'); 
-            setTimeout(() => box.classList.add('hidden'), 200);
+            box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200);
             pendingMarkerCoords = null;
         }
 
         function confirmarMarcador() {
-            if (!pendingMarkerCoords) {
-                mostrarToast("Erro: Coordenadas perdidas. Tente novamente.");
-                cancelarMarcador();
-                return;
-            }
+            if (!pendingMarkerCoords) { mostrarToast("Erro: Coordenadas perdidas."); cancelarMarcador(); return; }
             const label = document.getElementById('marcador-input-nome').value.trim() || 'Alvo Tático';
             criarMarcador(pendingMarkerCoords.lat, pendingMarkerCoords.lng, label);
             cancelarMarcador();
@@ -380,27 +533,19 @@
             const dado = { lat, lng, label, ts: Date.now(), autor: session.label };
             try {
                 mostrarToast("A enviar coordenadas...");
-                await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { 
-                    method: 'PUT', 
-                    body: JSON.stringify(dado) 
-                }); 
+                await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }); 
                 mostrarToast("📍 Alvo marcado com sucesso!");
                 await fetchMarcadores();
-            } catch(e) { 
-                mostrarToast("Erro de rede ao gravar marcador na Base de Dados."); 
-            }
+            } catch(e) { mostrarToast("Erro de rede ao gravar."); }
         }
 
         async function removerMarcador(team, chave) {
             if (!session || session.role !== 'comandante' || session.team !== team) return;
-            
             try {
                 await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }); 
                 mostrarToast("Marcador removido.");
                 await fetchMarcadores();
-            } catch(e) {
-                mostrarToast("Erro ao tentar remover o marcador.");
-            }
+            } catch(e) { mostrarToast("Erro ao remover."); }
         }
 
         async function fetchMarcadores() {
@@ -413,15 +558,12 @@
                     const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}.json?nocache=` + Date.now()); 
                     marcadoresAtuais = { [session.team]: (await res.json()) || {} };
                 } else { marcadoresAtuais = {}; }
-            } catch (err) {
-                console.warn("Falha ao buscar marcadores:", err);
-            }
+            } catch (err) {}
             renderMarcadores();
         }
 
         function renderMarcadores() {
             if (!map) return;
-            // Limpa os marcadores velhos no leaflet
             Object.values(leafletTacticalMarkers).forEach(m => map.removeLayer(m));
             leafletTacticalMarkers = {};
 
@@ -429,50 +571,37 @@
                 const marcadores = marcadoresAtuais[team] || {};
                 Object.keys(marcadores).forEach(chave => {
                     const m = marcadores[chave]; if (!m) return;
-                    
-                    // Expira após 30 min (para limpar o mapa de lixo velho)
-                    if (Date.now() - m.ts > 30 * 60 * 1000) return;
-                    
-                    // SEGURANÇA: Previne erros se a BD tiver lixo
+                    if (Date.now() - m.ts > 30 * 60 * 1000) return; // Limpa após 30 min
                     if (typeof m.lat !== 'number' || typeof m.lng !== 'number') return;
 
                     const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
-                    const iconHTML = `<div class="flex flex-col items-center"><span class="text-2xl drop-shadow-md cursor-pointer ${cor}">📍</span><span class="text-[10px] font-bold text-white bg-black/80 border border-gray-700 px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap mt-[-5px]">${(m.label || '').slice(0, 20)}</span></div>`;
+                    const iconHTML = `<div class="flex flex-col items-center pointer-events-auto"><span class="text-2xl drop-shadow-md cursor-pointer ${cor}">📍</span><span class="text-[10px] font-bold text-white bg-black/80 border border-gray-700 px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap mt-[-5px]">${(m.label || '').slice(0, 20)}</span></div>`;
                     
                     const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [40, 40], iconAnchor: [20, 35] });
                     const marker = L.marker([m.lat, m.lng], {icon: icon}).addTo(map);
                     
-                    marker.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e); // Garante que o toque apaga sem bugs
-                        removerMarcador(team, chave);
-                    });
+                    marker.on('click', (e) => { L.DomEvent.stopPropagation(e); removerMarcador(team, chave); });
                     leafletTacticalMarkers[chave] = marker;
                 });
             });
         }
 
-        // -------------------------------------------------------------
-        // RASTREAMENTO GPS DOS OPERADORES
-        // -------------------------------------------------------------
+        // =============================================================
+        // 5. GPS DE OPERADORES
+        // =============================================================
         function toggleGPS() {
-            if (!session || !session.team) { mostrarToast("Deve fazer login com uma equipa."); return; }
+            if (!session || !session.team) { mostrarToast("Deve fazer login."); return; }
             const btn = document.getElementById('btn-gps');
-            
             if (isGpsActive) {
                 if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
                 isGpsActive = false;
-                btn.textContent = '📍 GPS: OFF';
-                btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600');
-                btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
+                btn.textContent = '📍 GPS: OFF'; btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600'); btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
                 mostrarToast("Transmissor GPS Desligado.");
             } else {
-                if (!("geolocation" in navigator)) { mostrarToast("GPS não suportado neste aparelho."); return; }
-                
+                if (!("geolocation" in navigator)) { mostrarToast("GPS não suportado."); return; }
                 isGpsActive = true;
-                btn.textContent = '📍 GPS: ON';
-                btn.classList.remove('bg-gray-900', 'text-gray-400', 'border-gray-700');
-                btn.classList.add('bg-green-900', 'text-green-300', 'border-green-600');
-                mostrarToast("A iniciar transmissão de posição...");
+                btn.textContent = '📍 GPS: ON'; btn.classList.remove('bg-gray-900', 'text-gray-400', 'border-gray-700'); btn.classList.add('bg-green-900', 'text-green-300', 'border-green-600');
+                mostrarToast("A iniciar transmissão...");
 
                 gpsWatchId = navigator.geolocation.watchPosition(
                     async (position) => {
@@ -480,13 +609,9 @@
                         try { await fetch(`${FIREBASE_BASE}/quiral_gps/${session.team}/${session.user}.json`, { method: 'PUT', body: JSON.stringify(dadosGps) }); } catch(e) {}
                     },
                     (error) => {
-                        isGpsActive = false;
-                        btn.textContent = '📍 GPS: OFF';
-                        btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600');
-                        btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
-                        if (error.code === 1) mostrarToast("Permita o acesso à localização!"); else mostrarToast("Falha de sinal GPS.");
-                    },
-                    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+                        isGpsActive = false; btn.textContent = '📍 GPS: OFF'; btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600'); btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
+                        if (error.code === 1) mostrarToast("Permita o acesso à localização!"); else mostrarToast("Falha GPS.");
+                    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
                 );
             }
         }
@@ -494,27 +619,17 @@
         async function syncPlayersOnMap() {
             if (!map || !session) return;
             try {
-                // Para evitar espionagem de GPS, se for jogador, tenta ler só a sua equipa. 
-                // Admin lê tudo.
                 let data = {};
-                if (isAdmin) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_gps.json?nocache=${Date.now()}`);
-                    data = await res.json() || {};
-                } else if (session.team) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_gps/${session.team}.json?nocache=${Date.now()}`);
-                    data[session.team] = await res.json() || {};
-                }
+                if (isAdmin) { const res = await fetch(`${FIREBASE_BASE}/quiral_gps.json?nocache=${Date.now()}`); data = await res.json() || {}; } 
+                else if (session.team) { const res = await fetch(`${FIREBASE_BASE}/quiral_gps/${session.team}.json?nocache=${Date.now()}`); data[session.team] = await res.json() || {}; }
 
                 ['azul', 'amarelo'].forEach(team => {
                     const players = data[team] || {};
                     Object.keys(players).forEach(user => {
                         const p = players[user];
-                        // Ignora jogadores sem sinal há mais de 10 minutos
                         if (Date.now() - p.ts > 10 * 60 * 1000) {
-                            if (leafletPlayerMarkers[team+'_'+user]) { map.removeLayer(leafletPlayerMarkers[team+'_'+user]); delete leafletPlayerMarkers[team+'_'+user]; }
-                            return;
+                            if (leafletPlayerMarkers[team+'_'+user]) { map.removeLayer(leafletPlayerMarkers[team+'_'+user]); delete leafletPlayerMarkers[team+'_'+user]; } return;
                         } 
-
                         const mId = team + '_' + user;
                         const corClasse = team === 'azul' ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : 'bg-yellow-500 shadow-[0_0_8px_#eab308]';
                         
@@ -535,135 +650,74 @@
             } catch(e) {}
         }
 
+        // =============================================================
+        // 6. ADMIN & LAYOUT
+        // =============================================================
+        function toFirebaseKeyed(obj) { const out = {}; Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; }); return out; }
+        function fromFirebaseKeyed(raw) { const out = {}; if (!raw) return out; Object.keys(raw).forEach(k => { if (raw[k] == null) return; const id = String(k).replace(/^n/, ''); out[id] = raw[k]; }); return out; }
 
-        // -------------------------------------------------------------
-        // LOGIN AVANÇADO E SEGURANÇA
-        // -------------------------------------------------------------
-        function toggleCodinomeField() {
-            const role = document.getElementById('login-role').value;
-            const divCodinome = document.getElementById('div-codinome');
-            if (role === 'admin') divCodinome.classList.add('hidden'); else divCodinome.classList.remove('hidden');
+        function marcarLayoutPendente() { layoutPendente = true; const btn = document.getElementById('btn-salvar-layout'); btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse'); }
+        async function salvarLayout() {
+            if (!isAdmin) return; const btn = document.getElementById('btn-salvar-layout'); btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
+            try { await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) }); layoutPendente = false; btn.textContent = 'SALVO ✔'; } catch(e) { btn.textContent = 'ERRO'; }
+            setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 2000);
+        }
+        async function fetchPositions() {
+            try { const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json?nocache=${Date.now()}`); const data = await res.json(); if (data && !layoutPendente) nodePositions = fromFirebaseKeyed(data); } catch (err) {}
         }
 
-        function openLoginModal() {
-            if (session) { logout(); return; }
-            document.getElementById('login-callsign').value = ''; document.getElementById('login-pass').value = '';
-            document.getElementById('login-erro').classList.add('hidden');
-            toggleCodinomeField();
-            const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
-        }
+        document.getElementById('btn-reset-logs').addEventListener('click', async () => {
+            if (!confirm('Limpar Jogo Inteiro (Logs, GPS, Ordens e Marcadores)?')) return;
+            try {
+                await fetch(LOGS_URL, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_comandos.json`, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_ordens_log.json`, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' }); await fetch(`${FIREBASE_BASE}/quiral_gps.json`, { method: 'PUT', body: 'null' });
+                mostrarToast('Jogo reiniciado com sucesso.');
+            } catch(e){}
+        });
+
+        // =============================================================
+        // 7. AUTENTICAÇÃO E CONTAS
+        // =============================================================
+        function toggleCodinomeField() { const role = document.getElementById('login-role').value; const divCodinome = document.getElementById('div-codinome'); if (role === 'admin') divCodinome.classList.add('hidden'); else divCodinome.classList.remove('hidden'); }
+        function openLoginModal() { if (session) { logout(); return; } document.getElementById('login-callsign').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden'); toggleCodinomeField(); const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); }
         function closeLoginModal() { const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
         function logout() { session = null; sessionStorage.removeItem('quiral_session'); if (isGpsActive) toggleGPS(); applySessionUI(); }
 
-        async function sha256(texto) {
-            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto));
-            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+        async function sha256(texto) { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto)); return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
 
         async function autenticar() {
-            const roleKey = document.getElementById('login-role').value;
-            const callsign = document.getElementById('login-callsign').value.trim();
-            const pass = document.getElementById('login-pass').value;
-            const erroEl = document.getElementById('login-erro');
-            
+            const roleKey = document.getElementById('login-role').value; const callsign = document.getElementById('login-callsign').value.trim(); const pass = document.getElementById('login-pass').value; const erroEl = document.getElementById('login-erro');
             if (roleKey !== 'admin' && !callsign) { erroEl.textContent = 'Codinome é obrigatório.'; erroEl.classList.remove('hidden'); return; }
             if (!pass) { erroEl.textContent = 'Senha é obrigatória.'; erroEl.classList.remove('hidden'); return; }
-
-            const hashDigitado = await sha256(pass);
-            let contas = {};
+            const hashDigitado = await sha256(pass); let contas = {};
             try { const res = await fetch(AUTH_URL + '?nocache=' + Date.now()); contas = await res.json() || {}; } catch(e) {}
-
             let contaValida = false;
-            
-            // Verifica na BD
-            if (contas[roleKey] && contas[roleKey].passHash === hashDigitado) {
-                contaValida = true;
-            } else if (!contas[roleKey]) {
-                // Fallbacks se DB não tiver a chave ainda (Senhas corrigidas)
-                const fallbacks = {
-                    'admin': await sha256('quiral2026'),
-                    'comandante_azul': await sha256('azulcmd'),
-                    'jogador_azul': await sha256('azul123'),
-                    'comandante_amarelo': await sha256('amarelocmd'),
-                    'jogador_amarelo': await sha256('amarelo123')
-                };
+            if (contas[roleKey] && contas[roleKey].passHash === hashDigitado) { contaValida = true; } 
+            else if (!contas[roleKey]) {
+                const fallbacks = { 'admin': await sha256('quiral2026'), 'comandante_azul': await sha256('azulcmd'), 'jogador_azul': await sha256('azul123'), 'comandante_amarelo': await sha256('amarelocmd'), 'jogador_amarelo': await sha256('amarelo123') };
                 if (fallbacks[roleKey] === hashDigitado) contaValida = true;
             }
-
             if (contaValida) {
                 let roleReal = roleKey.startsWith('comandante') ? 'comandante' : (roleKey === 'admin' ? 'admin' : 'jogador');
                 let teamReal = roleKey.includes('azul') ? 'azul' : (roleKey.includes('amarelo') ? 'amarelo' : null);
-                
-                session = { 
-                    role: roleReal, team: teamReal, 
-                    label: roleKey === 'admin' ? 'Administrador' : callsign, 
-                    user: roleKey === 'admin' ? 'admin' : callsign.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() 
-                };
-                sessionStorage.setItem('quiral_session', JSON.stringify(session));
-                closeLoginModal(); applySessionUI();
-                fetchComandos(); fetchMarcadores(); // Busca imediatamente ordens da sua equipa
-            } else {
-                erroEl.textContent = 'Senha incorreta para a equipa escolhida.'; erroEl.classList.remove('hidden');
-            }
+                session = { role: roleReal, team: teamReal, label: roleKey === 'admin' ? 'Administrador' : callsign, user: roleKey === 'admin' ? 'admin' : callsign.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() };
+                sessionStorage.setItem('quiral_session', JSON.stringify(session)); closeLoginModal(); applySessionUI(); fetchComandos(); fetchMarcadores();
+            } else { erroEl.textContent = 'Senha incorreta para a equipa escolhida.'; erroEl.classList.remove('hidden'); }
         }
 
-        // -------------------------------------------------------------
-        // UI GERAL, LOGS E HISTÓRICO
-        // -------------------------------------------------------------
         function applySessionUI() {
-            isAdmin = !!(session && session.role === 'admin');
-            const isCmd = !!(session && session.role === 'comandante');
-            
-            document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-salvar-layout').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
-            
-            document.getElementById('btn-marcador').classList.toggle('hidden', !isCmd);
-            document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
-            
-            const btnGps = document.getElementById('btn-gps');
-            const loginBtn = document.getElementById('btn-login'); 
-            const badge = document.getElementById('session-badge');
-            
+            isAdmin = !!(session && session.role === 'admin'); const isCmd = !!(session && session.role === 'comandante');
+            document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin); document.getElementById('btn-salvar-layout').classList.toggle('hidden', !isAdmin); document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin); document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin); document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-marcador').classList.toggle('hidden', !isCmd); document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
+            const btnGps = document.getElementById('btn-gps'); const loginBtn = document.getElementById('btn-login'); const badge = document.getElementById('session-badge');
             if (session) {
-                loginBtn.textContent = 'SAIR'; 
-                const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
+                loginBtn.textContent = 'SAIR'; const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
                 badge.className = 'mt-2 text-xs ' + cor; badge.textContent = 'Conectado: ' + (session.label || session.user); badge.classList.remove('hidden');
                 if (session.team) btnGps.classList.remove('hidden'); else btnGps.classList.add('hidden');
             } else {
                 loginBtn.textContent = '🔒 ENTRAR'; badge.classList.add('hidden'); btnGps.classList.add('hidden');
-                // Limpa mapas se deslogar
-                Object.values(leafletPlayerMarkers).forEach(m => map?.removeLayer(m)); leafletPlayerMarkers = {};
-                Object.values(leafletTacticalMarkers).forEach(m => map?.removeLayer(m)); leafletTacticalMarkers = {};
-                comandosAtuais = {}; renderComandosOverlay();
+                Object.values(leafletPlayerMarkers).forEach(m => map?.removeLayer(m)); leafletPlayerMarkers = {}; Object.values(leafletTacticalMarkers).forEach(m => map?.removeLayer(m)); leafletTacticalMarkers = {}; comandosAtuais = {}; renderComandosOverlay();
             }
         }
-
-        // Histórico Modais
-        async function openHistoricoModal() {
-            if (!session) return; const box = document.getElementById('historico-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
-            const lista = document.getElementById('historico-lista'); lista.innerHTML = '<p class="text-gray-500 text-center">Carregando...</p>';
-            try {
-                let entradas = [];
-                if (isAdmin) {
-                    const [ra, ry] = await Promise.all([ fetch(`${FIREBASE_BASE}/quiral_ordens_log/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_ordens_log/amarelo.json?nocache=` + Date.now()) ]);
-                    const az = (await ra.json()) || {}, am = (await ry.json()) || {};
-                    entradas = [ ...Object.values(az).map(e => ({ ...e, team: 'azul' })), ...Object.values(am).map(e => ({ ...e, team: 'amarelo' })) ];
-                } else if (session.team) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}.json?nocache=` + Date.now()); const data = (await res.json()) || {};
-                    entradas = Object.values(data).map(e => ({ ...e, team: session.team }));
-                }
-                entradas = entradas.filter(Boolean).sort((a, b) => (b.ts || 0) - (a.ts || 0));
-                if (!entradas.length) { lista.innerHTML = '<p class="text-gray-500 text-center">Nenhuma ordem registada ainda.</p>'; return; }
-                lista.innerHTML = entradas.map(e => {
-                    const cor = e.team === 'azul' ? 'text-blue-400' : 'text-yellow-400'; const icone = e.ordem === 'atacar' ? '⚔' : '🛡'; const hora = e.ts ? new Date(e.ts).toLocaleTimeString('pt-PT', { hour12: false }) : '--:--:--';
-                    return `<div class="border-b border-gray-800 pb-1"><span class="text-gray-600">[${hora}]</span> <span class="${cor} font-bold">${e.team.toUpperCase()}</span> ${icone} Nó ${e.node} — <span class="text-gray-500">${e.autor || ''}</span></div>`;
-                }).join('');
-            } catch (err) { lista.innerHTML = '<p class="text-red-400 text-center">Erro ao carregar histórico.</p>'; }
-        }
-        function closeHistoricoModal() { const box = document.getElementById('historico-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
 
         async function openContasModal() {
             if (!isAdmin) return; const box = document.getElementById('contas-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
@@ -671,7 +725,6 @@
             let contas = {}; try { const res = await fetch(AUTH_URL + '?nocache=' + Date.now()); contas = (await res.json()) || {}; } catch (err) {}
             container.innerHTML = '';
             ROLE_KEYS.forEach(key => {
-                const conta = contas[key] || {};
                 container.innerHTML += `
                     <div class="border border-gray-700 rounded p-3">
                         <p class="text-xs text-gray-400 font-bold mb-2">${ROLE_LABELS[key]}</p>
@@ -685,71 +738,62 @@
         function closeContasModal() { const box = document.getElementById('contas-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
 
         async function salvarConta(key) {
-            const passInput = document.getElementById(`conta-pass-${key}`);
-            const msg = document.getElementById(`conta-msg-${key}`);
-            const novaSenha = passInput.value;
+            const passInput = document.getElementById(`conta-pass-${key}`); const msg = document.getElementById(`conta-msg-${key}`); const novaSenha = passInput.value;
             if (!novaSenha) { msg.textContent = 'Escreva a senha.'; msg.className = 'text-[10px] mt-1 text-red-400'; msg.classList.remove('hidden'); return; }
             try {
-                const passHash = await sha256(novaSenha);
-                const roleType = key.startsWith('comandante') ? 'comandante' : (key === 'admin' ? 'admin' : 'jogador');
-                const roleTeam = key.includes('azul') ? 'azul' : (key.includes('amarelo') ? 'amarelo' : null);
+                const passHash = await sha256(novaSenha); const roleType = key.startsWith('comandante') ? 'comandante' : (key === 'admin' ? 'admin' : 'jogador'); const roleTeam = key.includes('azul') ? 'azul' : (key.includes('amarelo') ? 'amarelo' : null);
                 const novaConta = { passHash, role: roleType, team: roleTeam, label: ROLE_LABELS[key] };
                 await fetch(FIREBASE_BASE + `/quiral_auth/${key}.json`, { method: 'PUT', body: JSON.stringify(novaConta) });
                 msg.textContent = 'Senha atualizada!'; msg.className = 'text-[10px] mt-1 text-green-400'; msg.classList.remove('hidden'); passInput.value = '';
             } catch (err) { msg.textContent = 'Erro ao salvar.'; msg.className = 'text-[10px] mt-1 text-red-400'; msg.classList.remove('hidden'); }
         }
 
-        // Cloud Logs (Avisos Gerais)
+        // =============================================================
+        // 8. LOGS E HISTÓRICO
+        // =============================================================
         function addLog(key, html, timeStr) {
             if (renderedLogKeys.has(key)) return; renderedLogKeys.add(key);
-            const box = document.getElementById('log-box');
-            if (box.dataset.empty === '1') { box.innerHTML = ''; box.dataset.empty = '0'; }
-            const row = document.createElement('div'); row.className = 'log-entry border-b border-gray-800/60 pb-1';
-            row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> ${html}`;
-            box.prepend(row);
+            const box = document.getElementById('log-box'); if (box.dataset.empty === '1') { box.innerHTML = ''; box.dataset.empty = '0'; }
+            const row = document.createElement('div'); row.className = 'log-entry border-b border-gray-800/60 pb-1'; row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> ${html}`; box.prepend(row);
         }
         async function fetchCloudLogs() {
             try {
                 const res = await fetch(LOGS_URL + '?nocache=' + Date.now()); const data = await res.json();
-                if (!data) {
-                    if (renderedLogKeys.size > 0) { renderedLogKeys.clear(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; }
-                    return;
-                }
-                const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
-                entries.forEach(entry => addLog(entry.key, entry.m, entry.t));
+                if (!data) { if (renderedLogKeys.size > 0) { renderedLogKeys.clear(); document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; } return; }
+                const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0)); entries.forEach(entry => addLog(entry.key, entry.m, entry.t));
             } catch (err) {}
         }
-
-        // Admin: Layout & Reset
-        function toFirebaseKeyed(obj) { const out = {}; Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; }); return out; }
-        function fromFirebaseKeyed(raw) { const out = {}; if (!raw) return out; Object.keys(raw).forEach(k => { if (raw[k] == null) return; const id = String(k).replace(/^n/, ''); out[id] = raw[k]; }); return out; }
-
-        function marcarLayoutPendente() { layoutPendente = true; const btn = document.getElementById('btn-salvar-layout'); btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse'); }
-        async function salvarLayout() {
-            if (!isAdmin) return; const btn = document.getElementById('btn-salvar-layout'); btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
-            try { await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) }); layoutPendente = false; btn.textContent = 'SALVO ✔'; } catch(e) { btn.textContent = 'ERRO'; }
-            setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 2000);
-        }
-        async function fetchPositions() {
-            try { const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json?nocache=${Date.now()}`); const data = await res.json(); if (data && !layoutPendente) nodePositions = fromFirebaseKeyed(data); } catch (err) {}
-        }
-        
-        document.getElementById('btn-reset-logs').addEventListener('click', async () => {
-            if (!confirm('Limpar Jogo Inteiro (Logs, GPS, Ordens e Marcadores)?')) return;
+        async function openHistoricoModal() {
+            if (!session) return; const box = document.getElementById('historico-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            const lista = document.getElementById('historico-lista'); lista.innerHTML = '<p class="text-gray-500 text-center">Carregando...</p>';
             try {
-                await fetch(LOGS_URL, { method: 'PUT', body: 'null' });
-                await fetch(`${FIREBASE_BASE}/quiral_comandos.json`, { method: 'PUT', body: 'null' });
-                await fetch(`${FIREBASE_BASE}/quiral_ordens_log.json`, { method: 'PUT', body: 'null' });
-                await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' });
-                await fetch(`${FIREBASE_BASE}/quiral_gps.json`, { method: 'PUT', body: 'null' });
-                mostrarToast('Jogo reiniciado com sucesso.');
-            } catch(e){}
-        });
+                let entradas = [];
+                if (isAdmin) {
+                    const [ra, ry] = await Promise.all([ fetch(`${FIREBASE_BASE}/quiral_ordens_log/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_ordens_log/amarelo.json?nocache=` + Date.now()) ]);
+                    const az = (await ra.json()) || {}, am = (await ry.json()) || {}; entradas = [ ...Object.values(az).map(e => ({ ...e, team: 'azul' })), ...Object.values(am).map(e => ({ ...e, team: 'amarelo' })) ];
+                } else if (session.team) {
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}.json?nocache=` + Date.now()); const data = (await res.json()) || {}; entradas = Object.values(data).map(e => ({ ...e, team: session.team }));
+                }
+                entradas = entradas.filter(Boolean).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                if (!entradas.length) { lista.innerHTML = '<p class="text-gray-500 text-center">Nenhuma ordem registada ainda.</p>'; return; }
+                lista.innerHTML = entradas.map(e => {
+                    const cor = e.team === 'azul' ? 'text-blue-400' : 'text-yellow-400'; const icone = e.ordem === 'atacar' ? '⚔' : '🛡'; const hora = e.ts ? new Date(e.ts).toLocaleTimeString('pt-PT', { hour12: false }) : '--:--:--';
+                    return `<div class="border-b border-gray-800 pb-1"><span class="text-gray-600">[${hora}]</span> <span class="${cor} font-bold">${e.team.toUpperCase()}</span> ${icone} Nó ${e.node} — <span class="text-gray-500">${e.autor || ''}</span></div>`;
+                }).join('');
+            } catch (err) { lista.innerHTML = '<p class="text-red-400 text-center">Erro ao carregar histórico.</p>'; }
+        }
+        function closeHistoricoModal() { const box = document.getElementById('historico-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+        async function exportarLog() {
+            try {
+                const res = await fetch(LOGS_URL + '?nocache=' + Date.now()); const data = (await res.json()) || {}; const entradas = Object.values(data).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                const linhas = entradas.map(e => `[${e.t}] ${(e.m || '').replace(/<[^>]+>/g, '')}`); const texto = linhas.length ? linhas.join('\n') : 'Sem registos nesta partida.';
+                const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `registo-combate-${new Date().toISOString().slice(0, 16).replace(':', '-')}.txt`; document.body.appendChild(a); a.click(); a.remove();
+            } catch (err) { mostrarToast('Falha ao exportar registo.'); }
+        }
 
-
-        // -------------------------------------------------------------
-        // LAÇO PRINCIPAL (UPLINK DE DADOS)
-        // -------------------------------------------------------------
+        // =============================================================
+        // 9. UPLINK (Sincronização Principal)
+        // =============================================================
         function updateStatusBadge(type, playing) {
             const badge = document.getElementById('status-badge');
             if (type === 'ok' && playing) { badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse"; }
@@ -761,19 +805,11 @@
             try {
                 const response = await fetch("https://quiral-f97a2-default-rtdb.firebaseio.com/quiral.json?nocache=" + Date.now());
                 const data = await response.json(); if (!data) return;
-
                 lastSuccessfulFetch = Date.now(); lastFullData = data;
-                document.getElementById('last-update').innerText = new Date().toLocaleTimeString('pt-PT');
-                document.getElementById('conn-detail').innerText = 'Ligação Estabelecida';
-
+                document.getElementById('last-update').innerText = new Date().toLocaleTimeString('pt-PT'); document.getElementById('conn-detail').innerText = 'Ligação Estabelecida';
                 const isPlaying = (data.st === "ON");
-                document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0";
-                document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0";
-                document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00";
-                document.getElementById('game-mode').innerText = "MODO: " + (data.md || "--");
-
+                document.getElementById('score-azul').innerText = isPlaying ? (data.az || "0") : "0"; document.getElementById('score-amarelo').innerText = isPlaying ? (data.am || "0") : "0"; document.getElementById('game-time').innerText = isPlaying ? (data.tp || "00:00") : "00:00"; document.getElementById('game-mode').innerText = "MODO: " + (data.md || "--");
                 updateStatusBadge('ok', isPlaying);
-
                 if (data.nos && Array.isArray(data.nos)) {
                     const online = data.nos.filter(n => n.online).length; document.getElementById('node-count').textContent = `(${online}/${data.nos.length} online)`;
                     renderVisuals(data);
@@ -781,45 +817,32 @@
             } catch (error) { updateStatusBadge('error', false); document.getElementById('conn-detail').innerText = 'Falha na Ligação DB'; }
         }
 
-        // Funções de UI menores
         function showModal(title, html) { document.querySelector('#modal-box h3').innerText = title; document.getElementById('modal-text').innerHTML = html; const box = document.getElementById('modal-box'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); }
         function closeModal() { const box = document.getElementById('modal-box'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
-        function showNodeDetail(id) {
-            const node = (lastFullData && lastFullData.nos && lastFullData.nos[id - 1]) || null; if (!node) { showModal('NÓ ' + id, 'Sem dados disponíveis ainda.'); return; }
-            let estado = node.online ? '<span class="text-green-400">EM LINHA</span>' : '<span class="text-red-400">OFFLINE</span>'; let extra = '';
-            if (node.online) { if (lastFullData.md === 'QUIRAL') extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>'; else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>'; }
-            showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra);
-        }
         function mostrarToast(texto) { const el = document.getElementById('toast'); el.textContent = texto; el.classList.remove('hidden', 'opacity-0'); setTimeout(() => { el.classList.add('opacity-0'); setTimeout(() => el.classList.add('hidden'), 300); }, 3000); }
         function toggleModoNoturno() { document.body.classList.toggle('modo-noturno'); }
         async function toggleWakeLock() { if (wakeLock) { try { await wakeLock.release(); } catch(e){} wakeLock = null; mostrarToast('Tela Normal'); } else { try { wakeLock = await navigator.wakeLock.request('screen'); mostrarToast('Tela Ligada Ativa'); } catch(e){} } }
-        
-        // Boot Geral
+
+        // =============================================================
+        // 10. ARRANQUE DA APLICAÇÃO
+        // =============================================================
         async function bootDashboard() {
             applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
             initLeafletMap();
             await fetchPositions();
-            fetchUplinkData();
-            fetchCloudLogs();
+            fetchUplinkData(); fetchCloudLogs();
             if (session) { fetchComandos(); fetchMarcadores(); }
             
-            setInterval(fetchUplinkData, 2000);
-            setInterval(fetchCloudLogs, 3000);
-            setInterval(fetchPositions, 10000); 
-            setInterval(syncPlayersOnMap, 3000); 
+            setInterval(fetchUplinkData, 2000); setInterval(fetchCloudLogs, 3000); setInterval(fetchPositions, 10000); setInterval(syncPlayersOnMap, 3000);
             setInterval(() => { if(session) { fetchComandos(); fetchMarcadores(); } }, 4000);
         }
-
         window.addEventListener('load', bootDashboard);
 
-        // REGISTO DO SERVICE WORKER (PWA) - Protegido contra ambientes de Preview
+        // REGISTO DO SERVICE WORKER (Para instalar a App)
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Apenas regista se estiver a correr num domínio real (http/https) e não em editores locais (blob/data)
                 if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
-                    navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Falha ao registar SW (normal em ambiente local)', err));
-                } else {
-                    console.info('Registo de ServiceWorker ignorado. Ambiente de preview detetado.');
+                    navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Falha SW (normal em ambiente local)', err));
                 }
             });
         }
