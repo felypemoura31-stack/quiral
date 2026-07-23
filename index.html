@@ -719,6 +719,28 @@
         // =============================================================
         // 7. ADMIN & LAYOUT
         // =============================================================
+        function toFirebaseKeyed(obj) { const out = {}; Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; }); return out; }
+        
+        function fromFirebaseKeyed(raw) { const out = {}; if (!raw) return out; Object.keys(raw).forEach(k => { if (raw[k] == null) return; const id = String(k).replace(/^n/, ''); out[id] = raw[k]; }); return out; }
+
+        function marcarLayoutPendente() { layoutPendente = true; const btn = document.getElementById('btn-salvar-layout'); btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse'); }
+
+        async function salvarLayout() {
+            if (!isAdmin) return;
+            const btn = document.getElementById('btn-salvar-layout');
+            btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) });
+                if (!res.ok) throw new Error("Erro na Base de Dados");
+                layoutPendente = false; btn.textContent = 'SALVO ✔';
+                mostrarToast("Novas posições guardadas com sucesso!");
+            } catch(e) {
+                btn.textContent = 'ERRO';
+                mostrarToast("Falha ao salvar. Verifique o sinal ou as regras da Firebase.");
+            }
+            setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 2000);
+        }
+
         async function fetchPositions() {
             try { 
                 const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json?nocache=${Date.now()}`); 
