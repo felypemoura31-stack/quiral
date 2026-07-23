@@ -288,167 +288,89 @@
         const ROLE_LABELS = { admin: 'Administrador', comandante_azul: 'Comandante Azul', jogador_azul: 'Jogador Azul', comandante_amarelo: 'Comandante Amarelo', jogador_amarelo: 'Jogador Amarelo' };
 
         // -------------------------------------------------------------
-        // INICIALIZAÇÃO DO MAPA LEAFLET
+        // SISTEMA DE MARCADORES (COMANDO) - BLINDADO
         // -------------------------------------------------------------
-        function initLeafletMap() {
-            if (map) return;
-            try {
-                document.getElementById('map-placeholder').classList.add('hidden');
-                
-                // Removido o 'tap: false' que estava a bloquear toques em ecrãs mobile!
-                map = L.map('leaflet-map', { zoomControl: false }).setView(CENTRO_MAPA, 18);
-                L.control.zoom({ position: 'topright' }).addTo(map);
-
-                const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                    maxZoom: 19, attribution: 'Tiles &copy; Esri'
-                });
-                const ruas = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19, attribution: '&copy; OpenStreetMap'
-                });
-
-                satelite.addTo(map);
-                L.control.layers({ "Satélite (Mato)": satelite, "Mapa (Ruas)": ruas }, null, {position: 'topright'}).addTo(map);
-
-                setTimeout(() => { map.invalidateSize(); }, 600);
-
-                // O evento de clique nativo do mapa foi removido.
-                // O marcador agora usa a técnica do centro do mapa (crosshair)
-                // que é 100% à prova de falhas em qualquer telemóvel Android/iOS.
-
-            } catch (err) { console.error("Erro Leaflet:", err); }
-        }
-
-        // -------------------------------------------------------------
-        // SINCRONIZAÇÃO DE NÓS/OBJETIVOS (Leaflet Markers)
-        // -------------------------------------------------------------
-        function renderVisuals(data) {
-            const isQuiral = data.md === "QUIRAL";
-            
-            data.nos.forEach((node, index) => {
-                const id = index + 1;
-                
-                let cssClass = "offline";
-                if (node.online) {
-                    if (isQuiral) { cssClass = node.ativo ? "active-green" : "inactive-red"; }
-                    else {
-                        if (node.owner === 1) cssClass = "active-blue";
-                        else if (node.owner === 2) cssClass = "active-yellow";
-                        else cssClass = "neutral-white";
-                    }
-                }
-                
-                let pos = nodePositions[id];
-                let latValid = pos && typeof pos.lat === 'number';
-                let isTooFar = latValid && (Math.abs(pos.lat - CENTRO_MAPA[0]) > 0.5); 
-                
-                if (!pos || !latValid || isTooFar) {
-                    const offsetLat = (Math.random() - 0.5) * 0.0015;
-                    const offsetLng = (Math.random() - 0.5) * 0.0015;
-                    pos = { lat: CENTRO_MAPA[0] + offsetLat, lng: CENTRO_MAPA[1] + offsetLng };
-                    nodePositions[id] = pos;
-                }
-
-                if (!leafletNodeMarkers[id]) {
-                    const iconHTML = `
-                        <div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto ${cssClass} ${isAdmin ? 'admin-mode' : ''}">
-                            ${id}
-                            <span id="ordem-badge-azul-${id}" class="ordem-badge hidden absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-blue-300"></span>
-                            <span id="ordem-badge-amarelo-${id}" class="ordem-badge hidden absolute -bottom-1 -right-1 w-4 h-4 rounded-full text-[9px] flex items-center justify-center border-2 border-yellow-300"></span>
-                        </div>
-                    `;
-                    
-                    const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [32, 32], iconAnchor: [16, 16] });
-
-                    const marker = L.marker([pos.lat, pos.lng], { 
-                        icon: icon, 
-                        draggable: isAdmin 
-                    }).addTo(map);
-
-                    marker.on('dragend', function(e) {
-                        if (!isAdmin) return;
-                        const newPos = e.target.getLatLng();
-                        nodePositions[id] = { lat: newPos.lat, lng: newPos.lng };
-                        marcarLayoutPendente();
-                    });
-
-                    // Evento de clique oficial do Leaflet (fiável no telemóvel)
-                    marker.on('click', function(e) {
-                        L.DomEvent.stopPropagation(e); // Impede que o clique transpasse para o mapa
-                        onNodeTap(id);
-                    });
-                    
-                    leafletNodeMarkers[id] = marker;
-                } else {
-                    const marker = leafletNodeMarkers[id];
-                    const divEl = document.getElementById(`map-node-${id}`);
-                    if (divEl) { divEl.className = `map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none pointer-events-auto ${cssClass} ${isAdmin ? 'admin-mode' : ''}`; }
-
-                    if (marker.options.draggable !== isAdmin) {
-                        if (isAdmin) marker.dragging.enable(); else marker.dragging.disable();
-                        marker.options.draggable = isAdmin;
-                    }
-                    if (!isAdmin) marker.setLatLng([pos.lat, pos.lng]);
-                }
-            });
-            
-            renderComandosOverlay(); 
-        }
-
         function handleMarcadorClick() {
-            if (!session || session.role !== 'comandante') return;
+            try {
+                if (!session || session.role !== 'comandante') {
+                    mostrarToast("Apenas comandantes podem usar esta ferramenta.");
+                    return;
+                }
 
-            if (!colocandoMarcador) {
-                // Ativar modo de mira
-                colocandoMarcador = true;
-                updateMarcadorUI();
-                mostrarToast("Mova o mapa para colocar a mira no local desejado.");
-            } else {
-                // Confirmar posição!
-                if(!map) return;
-                const center = map.getCenter();
-                pendingMarkerCoords = { lat: center.lat, lng: center.lng };
-                
+                if (!colocandoMarcador) {
+                    // Ativar modo de mira
+                    colocandoMarcador = true;
+                    updateMarcadorUI();
+                    mostrarToast("Mova o mapa para apontar o alvo ✛");
+                } else {
+                    // Confirmar posição!
+                    if(!map) {
+                        mostrarToast("Erro: Mapa não carregado.");
+                        return;
+                    }
+                    
+                    const center = map.getCenter();
+                    if (!center || typeof center.lat !== 'number') {
+                        throw new Error("Mapa não devolveu centro válido.");
+                    }
+                    
+                    pendingMarkerCoords = { lat: center.lat, lng: center.lng };
+                    
+                    colocandoMarcador = false;
+                    updateMarcadorUI();
+
+                    const box = document.getElementById('marcador-modal');
+                    const input = document.getElementById('marcador-input-nome');
+                    input.value = '';
+                    box.classList.remove('hidden');
+                    
+                    // Foca a caixa de texto automaticamente
+                    requestAnimationFrame(() => {
+                        box.classList.remove('opacity-0');
+                        input.focus();
+                    });
+                }
+            } catch (err) {
+                mostrarToast("Erro no Marcador: " + err.message);
                 colocandoMarcador = false;
                 updateMarcadorUI();
-
-                const box = document.getElementById('marcador-modal');
-                const input = document.getElementById('marcador-input-nome');
-                input.value = '';
-                box.classList.remove('hidden');
-                requestAnimationFrame(() => {
-                    box.classList.remove('opacity-0');
-                    input.focus();
-                });
             }
         }
 
         function updateMarcadorUI() {
             const btn = document.getElementById('btn-marcador'); 
             const crosshair = document.getElementById('crosshair-target');
-            document.getElementById('marcador-hint').classList.toggle('hidden', !colocandoMarcador);
+            const hint = document.getElementById('marcador-hint');
+            
+            if (hint) hint.classList.toggle('hidden', !colocandoMarcador);
             
             if (colocandoMarcador) {
                 btn.classList.add('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse');
                 btn.classList.remove('bg-purple-950', 'text-purple-300', 'border-purple-700');
                 btn.textContent = '✔️ CONFIRMAR ALVO';
-                crosshair.classList.remove('hidden');
+                if (crosshair) crosshair.classList.remove('hidden');
             } else {
                 btn.classList.remove('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse');
                 btn.classList.add('bg-purple-950', 'text-purple-300', 'border-purple-700');
                 btn.textContent = '📍 MARCADOR';
-                crosshair.classList.add('hidden');
+                if (crosshair) crosshair.classList.add('hidden');
             }
         }
 
         function cancelarMarcador() {
             const box = document.getElementById('marcador-modal');
-            box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200);
+            box.classList.add('opacity-0'); 
+            setTimeout(() => box.classList.add('hidden'), 200);
             pendingMarkerCoords = null;
         }
 
         function confirmarMarcador() {
-            if (!pendingMarkerCoords) return;
-            const label = document.getElementById('marcador-input-nome').value.trim() || 'Marcador Tático';
+            if (!pendingMarkerCoords) {
+                mostrarToast("Erro: Coordenadas perdidas. Tente novamente.");
+                cancelarMarcador();
+                return;
+            }
+            const label = document.getElementById('marcador-input-nome').value.trim() || 'Alvo Tático';
             criarMarcador(pendingMarkerCoords.lat, pendingMarkerCoords.lng, label);
             cancelarMarcador();
         }
@@ -457,20 +379,28 @@
             const chave = 'm_' + Date.now(); 
             const dado = { lat, lng, label, ts: Date.now(), autor: session.label };
             try {
-                await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }); 
+                mostrarToast("A enviar coordenadas...");
+                await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { 
+                    method: 'PUT', 
+                    body: JSON.stringify(dado) 
+                }); 
+                mostrarToast("📍 Alvo marcado com sucesso!");
                 await fetchMarcadores();
-            } catch(e) { mostrarToast("Erro ao criar marcador."); }
+            } catch(e) { 
+                mostrarToast("Erro de rede ao gravar marcador na Base de Dados."); 
+            }
         }
 
         async function removerMarcador(team, chave) {
             if (!session || session.role !== 'comandante' || session.team !== team) return;
             
-            // Removido o confirm() nativo que bloqueava o código em iframes/apps
             try {
                 await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }); 
                 mostrarToast("Marcador removido.");
                 await fetchMarcadores();
-            } catch(e){}
+            } catch(e) {
+                mostrarToast("Erro ao tentar remover o marcador.");
+            }
         }
 
         async function fetchMarcadores() {
@@ -483,7 +413,9 @@
                     const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}.json?nocache=` + Date.now()); 
                     marcadoresAtuais = { [session.team]: (await res.json()) || {} };
                 } else { marcadoresAtuais = {}; }
-            } catch (err) {}
+            } catch (err) {
+                console.warn("Falha ao buscar marcadores:", err);
+            }
             renderMarcadores();
         }
 
@@ -497,14 +429,15 @@
                 const marcadores = marcadoresAtuais[team] || {};
                 Object.keys(marcadores).forEach(chave => {
                     const m = marcadores[chave]; if (!m) return;
-                    // Expira após 30 min
+                    
+                    // Expira após 30 min (para limpar o mapa de lixo velho)
                     if (Date.now() - m.ts > 30 * 60 * 1000) return;
                     
-                    // SEGURANÇA: Previne que marcadores velhos sem GPS bloqueiem a leitura do mapa
+                    // SEGURANÇA: Previne erros se a BD tiver lixo
                     if (typeof m.lat !== 'number' || typeof m.lng !== 'number') return;
 
                     const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
-                    const iconHTML = `<div class="flex flex-col items-center"><span class="text-2xl drop-shadow-md cursor-pointer ${cor}">📍</span><span class="text-[9px] bg-black/70 ${cor} px-1 rounded whitespace-nowrap mt-[-5px]">${(m.label || '').slice(0, 20)}</span></div>`;
+                    const iconHTML = `<div class="flex flex-col items-center"><span class="text-2xl drop-shadow-md cursor-pointer ${cor}">📍</span><span class="text-[10px] font-bold text-white bg-black/80 border border-gray-700 px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap mt-[-5px]">${(m.label || '').slice(0, 20)}</span></div>`;
                     
                     const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [40, 40], iconAnchor: [20, 35] });
                     const marker = L.marker([m.lat, m.lng], {icon: icon}).addTo(map);
