@@ -530,13 +530,14 @@
 
         async function criarMarcador(lat, lng, label) {
             const chave = 'm_' + Date.now(); 
-            const dado = { lat, lng, label, ts: Date.now(), autor: session.label };
+            const dado = { lat: parseFloat(lat), lng: parseFloat(lng), label: label || 'Alvo Tático', ts: Date.now(), autor: session.label };
             try {
                 mostrarToast("A enviar coordenadas...");
-                await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }); 
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }); 
+                if (!res.ok) throw new Error("Falha na BD");
                 mostrarToast("📍 Alvo marcado com sucesso!");
                 await fetchMarcadores();
-            } catch(e) { mostrarToast("Erro de rede ao gravar."); }
+            } catch(e) { mostrarToast("Erro ao gravar. Verifique a internet."); }
         }
 
         async function removerMarcador(team, chave) {
@@ -571,14 +572,25 @@
                 const marcadores = marcadoresAtuais[team] || {};
                 Object.keys(marcadores).forEach(chave => {
                     const m = marcadores[chave]; if (!m) return;
-                    if (Date.now() - m.ts > 30 * 60 * 1000) return; // Limpa após 30 min
-                    if (typeof m.lat !== 'number' || typeof m.lng !== 'number') return;
+                    
+                    // Mantém os marcadores visíveis durante 60 minutos
+                    if (m.ts && Date.now() - m.ts > 60 * 60 * 1000) return; 
+                    
+                    // Usa parseFloat para contornar problemas de tipagem (String vs Number)
+                    const lat = parseFloat(m.lat);
+                    const lng = parseFloat(m.lng);
+                    if (isNaN(lat) || isNaN(lng)) return;
 
                     const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
-                    const iconHTML = `<div class="flex flex-col items-center pointer-events-auto"><span class="text-2xl drop-shadow-md cursor-pointer ${cor}">📍</span><span class="text-[10px] font-bold text-white bg-black/80 border border-gray-700 px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap mt-[-5px]">${(m.label || '').slice(0, 20)}</span></div>`;
+                    const iconHTML = `
+                        <div class="flex flex-col items-center pointer-events-auto">
+                            <span class="text-3xl drop-shadow-md cursor-pointer ${cor}">📍</span>
+                            <span class="text-[10px] font-bold text-white bg-black/80 border border-gray-700 px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap mt-[-6px]">${(m.label || '').slice(0, 20)}</span>
+                        </div>
+                    `;
                     
-                    const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [40, 40], iconAnchor: [20, 35] });
-                    const marker = L.marker([m.lat, m.lng], {icon: icon}).addTo(map);
+                    const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [40, 50], iconAnchor: [20, 45] });
+                    const marker = L.marker([lat, lng], {icon: icon}).addTo(map);
                     
                     marker.on('click', (e) => { L.DomEvent.stopPropagation(e); removerMarcador(team, chave); });
                     leafletTacticalMarkers[chave] = marker;
