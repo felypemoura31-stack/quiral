@@ -192,6 +192,7 @@
                         <button id="btn-marcador" onclick="handleMarcadorClick()" class="hidden bg-purple-950 hover:bg-purple-900 text-xs text-purple-300 px-3 py-1 rounded border border-purple-700 transition-colors">📍 MARCADOR</button>
                         <button id="btn-historico" onclick="openHistoricoModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">HISTÓRICO</button>
                         <button id="btn-exportar" onclick="exportarLog()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">EXPORTAR</button>
+                        <button id="btn-centro-campo" onclick="handleCentroClick()" class="hidden bg-orange-950 hover:bg-orange-900 text-xs text-orange-300 px-3 py-1 rounded border border-orange-800 transition-colors shadow-[0_0_8px_rgba(234,88,12,0.3)]">🗺️ MUDAR CAMPO</button>
                         <button id="btn-salvar-layout" onclick="salvarLayout()" class="hidden bg-green-900 hover:bg-green-800 text-xs text-green-200 px-3 py-1 rounded border border-green-600 transition-colors shadow-[0_0_10px_rgba(34,197,94,0.3)]">SALVAR LAYOUT</button>
                         <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">SENHAS</button>
                         <button id="btn-reset-logs" class="hidden bg-red-950 hover:bg-red-900 text-xs text-red-300 px-3 py-1 rounded border border-red-800 transition-colors">RESET JOGO</button>
@@ -200,16 +201,22 @@
 
                 <p id="admin-hint" class="text-[10px] text-gray-500 mb-2 text-center hidden">Modo Edição Ativado: arraste os nós (1, 2...) no mapa e depois toque em "SALVAR LAYOUT".</p>
                 <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mb-2 text-center font-bold">Mova o mapa para colocar o alvo no sítio exato da cruz e toque em CONFIRMAR ALVO.</p>
+                <p id="centro-hint" class="hidden text-[10px] text-orange-400 mb-2 text-center font-bold">Mova o mapa para a nova área de jogo e toque em CONFIRMAR CAMPO.</p>
 
                 <!-- O CONTAINER DO MAPA -->
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded z-0 flex-1 min-h-[400px] md:min-h-[500px]">
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-500 text-sm z-10 pointer-events-none bg-gray-900">A iniciar Satélite...</div>
                     <div id="leaflet-map" class="absolute inset-0 w-full h-full z-0"></div>
                     
-                    <!-- ALVO DE MIRA PARA MARCADOR (Estilo Uber) -->
+                    <!-- ALVO DE MIRA PARA MARCADOR/CENTRO (Estilo Uber) -->
                     <div id="crosshair-target" class="hidden absolute inset-0 z-[500] pointer-events-none flex items-center justify-center">
-                        <span class="text-5xl drop-shadow-lg text-purple-400 opacity-90" style="text-shadow: 0 0 10px #a855f7;">✛</span>
+                        <span class="text-5xl drop-shadow-lg text-white opacity-90" style="text-shadow: 0 0 10px rgba(255,255,255,0.8);">✛</span>
                     </div>
+
+                    <!-- BOTÃO FOCAR GPS -->
+                    <button id="btn-focar-jogador" onclick="focarNoJogador()" class="hidden absolute bottom-6 right-2 z-[400] bg-gray-900 text-blue-400 p-3 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.6)] border border-blue-500 transition-transform active:scale-95" title="Centralizar em mim">
+                        <span class="text-2xl leading-none drop-shadow-md">🎯</span>
+                    </button>
                 </div>
                 
                 <details class="mt-3 text-xs text-gray-500">
@@ -249,8 +256,8 @@
         const AUTH_URL = FIREBASE_BASE + "/quiral_auth.json";
         const LOGS_URL = FIREBASE_BASE + "/quiral_logs.json";
         
-        // --- COORDENADAS REAIS DO SEU CAMPO ---
-        const CENTRO_MAPA = [-17.763466, -48.649717];
+        // --- COORDENADAS REAIS PADRÃO (Atualiza automaticamente se a Base de Dados ditar) ---
+        let CENTRO_MAPA = [-17.763466, -48.649717];
         
         let session = null;
         try { session = JSON.parse(sessionStorage.getItem('quiral_session')); } catch (err) {}
@@ -262,12 +269,12 @@
         let lastSuccessfulFetch = 0;
         let nodePositions = {};
         
-        // Estado Tático
+        // Estado Tático (Mira Uber)
         let comandosAtuais = {};
         let marcadoresAtuais = {};
         let ordemNodeAlvo = null;
-        let colocandoMarcador = false;
-        let pendingMarkerCoords = null; // Guarda as coordenadas do toque do Comandante
+        let modoMira = null; // 'marcador' ou 'centro'
+        let pendingMarkerCoords = null; 
         
         // Estado do Mapa Leaflet
         let map = null;
@@ -276,9 +283,10 @@
         let leafletTacticalMarkers = {}; // Guarda os pins do comandante
         let layoutPendente = false;
 
-        // Estado GPS
+        // Estado GPS do Operador
         let gpsWatchId = null;
         let isGpsActive = false;
+        let meuGPSLatLng = null; // Guarda a coordenada exata para centralizar
         
         let wakeLock = null;
         const renderedLogKeys = new Set();
@@ -288,7 +296,20 @@
         const ROLE_LABELS = { admin: 'Administrador', comandante_azul: 'Comandante Azul', jogador_azul: 'Jogador Azul', comandante_amarelo: 'Comandante Amarelo', jogador_amarelo: 'Jogador Amarelo' };
 
         // =============================================================
-        // 1. INICIALIZAÇÃO DO MAPA LEAFLET
+        // 1. CARREGAMENTO INICIAL DO CENTRO (Se Jogarmos noutro Campo)
+        // =============================================================
+        async function carregarCentroCampo() {
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/centro.json?nocache=${Date.now()}`);
+                const data = await res.json();
+                if (data && typeof data.lat === 'number' && typeof data.lng === 'number') {
+                    CENTRO_MAPA = [data.lat, data.lng];
+                }
+            } catch(e) {}
+        }
+
+        // =============================================================
+        // 2. INICIALIZAÇÃO DO MAPA LEAFLET
         // =============================================================
         function initLeafletMap() {
             if (map) return;
@@ -313,7 +334,7 @@
         }
 
         // =============================================================
-        // 2. DESENHO DAS BASES/NÓS NO MAPA
+        // 3. DESENHO DAS BASES/NÓS NO MAPA
         // =============================================================
         function renderVisuals(data) {
             if (!map) return;
@@ -344,7 +365,6 @@
                 }
 
                 if (!leafletNodeMarkers[id]) {
-                    // HTML do Nó
                     const iconHTML = `
                         <div id="map-node-${id}" class="map-node relative w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center font-bold text-[10px] md:text-xs select-none ${cssClass} ${isAdmin ? 'admin-mode' : ''} pointer-events-auto">
                             ${id}
@@ -363,12 +383,7 @@
                         marcarLayoutPendente();
                     });
 
-                    // Clicar para dar ordens/ver detalhes (com stopPropagation para não arrastar o mapa sem querer)
-                    marker.on('click', function(e) {
-                        L.DomEvent.stopPropagation(e);
-                        onNodeTap(id); 
-                    });
-
+                    marker.on('click', function(e) { L.DomEvent.stopPropagation(e); onNodeTap(id); });
                     leafletNodeMarkers[id] = marker;
                 } else {
                     const marker = leafletNodeMarkers[id];
@@ -398,7 +413,7 @@
         }
 
         // =============================================================
-        // 3. ORDENS TÁTICAS (Comandante)
+        // 4. ORDENS TÁTICAS (Comandante)
         // =============================================================
         function openOrdemModal(id) {
             ordemNodeAlvo = id; document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
@@ -458,60 +473,85 @@
         }
 
         // =============================================================
-        // 4. MARCADORES TÁTICOS (ESTILO UBER)
+        // 5. MIRAS CENTRAIS: MUDAR CAMPO & MARCADOR TÁTICO
         // =============================================================
-        function handleMarcadorClick() {
-            try {
-                if (!session || session.role !== 'comandante') {
-                    mostrarToast("Apenas comandantes podem usar esta ferramenta.");
-                    return;
-                }
-                if (!colocandoMarcador) {
-                    colocandoMarcador = true;
-                    updateMarcadorUI();
-                    mostrarToast("Mova o mapa para apontar o alvo ✛");
-                } else {
-                    if(!map) { mostrarToast("Erro: Mapa não carregado."); return; }
-                    
-                    const center = map.getCenter();
-                    pendingMarkerCoords = { lat: center.lat, lng: center.lng };
-                    
-                    colocandoMarcador = false;
-                    updateMarcadorUI();
+        function atualizarUIMira() {
+            const crosshair = document.getElementById('crosshair-target');
+            const btnMarcador = document.getElementById('btn-marcador');
+            const btnCentro = document.getElementById('btn-centro-campo');
+            const hintMarcador = document.getElementById('marcador-hint');
+            const hintCentro = document.getElementById('centro-hint');
 
-                    const box = document.getElementById('marcador-modal');
-                    const input = document.getElementById('marcador-input-nome');
-                    input.value = '';
-                    box.classList.remove('hidden');
-                    
-                    requestAnimationFrame(() => {
-                        box.classList.remove('opacity-0');
-                        input.focus();
-                    });
-                }
-            } catch (err) {
-                mostrarToast("Erro no Marcador: " + err.message);
-                colocandoMarcador = false; updateMarcadorUI();
+            if(crosshair) crosshair.classList.toggle('hidden', !modoMira);
+
+            if (modoMira === 'marcador') {
+                if(btnMarcador) { btnMarcador.classList.add('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse'); btnMarcador.classList.remove('bg-purple-950', 'text-purple-300', 'border-purple-700'); btnMarcador.textContent = '✔️ CONFIRMAR ALVO'; }
+                if(hintMarcador) hintMarcador.classList.remove('hidden');
+                if(btnCentro) btnCentro.classList.add('hidden');
+            } else if (modoMira === 'centro') {
+                if(btnCentro) { btnCentro.classList.add('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse'); btnCentro.classList.remove('bg-orange-950', 'text-orange-300', 'border-orange-800'); btnCentro.textContent = '✔️ CONFIRMAR CENTRO'; }
+                if(hintCentro) hintCentro.classList.remove('hidden');
+                if(btnMarcador) btnMarcador.classList.add('hidden');
+            } else {
+                if(btnMarcador) { btnMarcador.classList.remove('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse'); btnMarcador.classList.add('bg-purple-950', 'text-purple-300', 'border-purple-700'); btnMarcador.textContent = '📍 MARCADOR'; }
+                if(btnCentro) { btnCentro.classList.remove('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse'); btnCentro.classList.add('bg-orange-950', 'text-orange-300', 'border-orange-800'); btnCentro.textContent = '🗺️ MUDAR CAMPO'; }
+                if(hintMarcador) hintMarcador.classList.add('hidden');
+                if(hintCentro) hintCentro.classList.add('hidden');
+                applySessionUI(); // Restaura a visibilidade consoante a permissão
             }
         }
 
-        function updateMarcadorUI() {
-            const btn = document.getElementById('btn-marcador'); 
-            const crosshair = document.getElementById('crosshair-target');
-            const hint = document.getElementById('marcador-hint');
-            
-            if (hint) hint.classList.toggle('hidden', !colocandoMarcador);
-            
-            if (colocandoMarcador) {
-                btn.classList.add('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse');
-                btn.classList.remove('bg-purple-950', 'text-purple-300', 'border-purple-700');
-                btn.textContent = '✔️ CONFIRMAR ALVO';
-                if (crosshair) crosshair.classList.remove('hidden');
+        // --- Lógica do Mudar Centro de Campo (Admin) ---
+        function handleCentroClick() {
+            if (!isAdmin) return;
+            if (modoMira === 'centro') {
+                salvarNovoCentro();
+                modoMira = null; atualizarUIMira();
             } else {
-                btn.classList.remove('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse');
-                btn.classList.add('bg-purple-950', 'text-purple-300', 'border-purple-700');
-                btn.textContent = '📍 MARCADOR';
-                if (crosshair) crosshair.classList.add('hidden');
+                modoMira = 'centro'; atualizarUIMira();
+                mostrarToast("Mova o mapa para o novo campo e clique em CONFIRMAR.");
+            }
+        }
+
+        async function salvarNovoCentro() {
+            if (!map) return;
+            const center = map.getCenter();
+            const lat = center.lat;
+            const lng = center.lng;
+
+            CENTRO_MAPA = [lat, lng];
+
+            // Re-espalhar as bases aleatoriamente em torno do novo centro
+            Object.keys(nodePositions).forEach(id => {
+                const offsetLat = (Math.random() - 0.5) * 0.0015;
+                const offsetLng = (Math.random() - 0.5) * 0.0015;
+                nodePositions[id] = { lat: lat + offsetLat, lng: lng + offsetLng };
+            });
+
+            try {
+                await fetch(`${FIREBASE_BASE}/quiral_config/centro.json`, { method: 'PUT', body: JSON.stringify({lat, lng}) });
+                await salvarLayout(); // Envia as novas posições das bases para a nuvem
+                mostrarToast("📍 Novo Campo travado! Redistribua as bases.");
+            } catch(e) {
+                mostrarToast("Erro ao comunicar com a Base de Dados.");
+            }
+        }
+
+        // --- Lógica do Marcador (Comandante) ---
+        function handleMarcadorClick() {
+            if (!session || session.role !== 'comandante') return;
+            if (modoMira === 'marcador') {
+                pendingMarkerCoords = map.getCenter();
+                modoMira = null; atualizarUIMira();
+                
+                const box = document.getElementById('marcador-modal');
+                const input = document.getElementById('marcador-input-nome');
+                input.value = '';
+                box.classList.remove('hidden');
+                requestAnimationFrame(() => { box.classList.remove('opacity-0'); input.focus(); });
+            } else {
+                modoMira = 'marcador'; atualizarUIMira();
+                mostrarToast("Mova o mapa para apontar a cruz ✛ no alvo.");
             }
         }
 
@@ -532,40 +572,26 @@
             const chave = 'm_' + Date.now(); 
             const dado = { lat: parseFloat(lat), lng: parseFloat(lng), label: label || 'Alvo Tático', ts: Date.now(), autor: session.label };
             
-            // ATUALIZAÇÃO OTIMISTA: Desenha instantaneamente no mapa sem esperar pela internet!
+            // Desenho imediato
             if (!marcadoresAtuais[session.team]) marcadoresAtuais[session.team] = {};
             marcadoresAtuais[session.team][chave] = dado;
             renderMarcadores();
 
             try {
-                mostrarToast("A sincronizar alvo com satélite...");
                 const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }); 
-                
-                if (!res.ok) {
-                    throw new Error("Erro " + res.status + " (Regras da Firebase bloqueadas)");
-                }
-                
-                mostrarToast("📍 Alvo sincronizado com o esquadrão!");
+                if (!res.ok) throw new Error("Erro de Servidor");
+                mostrarToast("📍 Alvo sincronizado com a equipa!");
             } catch(e) { 
-                mostrarToast("Aviso: " + e.message + " - Marcador visível apenas para si."); 
+                mostrarToast("Aviso Firebase: Marcou visível só para si (Veja as regras)."); 
             }
         }
 
         async function removerMarcador(team, chave) {
             if (!session || session.role !== 'comandante' || session.team !== team) return;
-            
-            // ATUALIZAÇÃO OTIMISTA: Apaga instantaneamente do mapa
-            if (marcadoresAtuais[team] && marcadoresAtuais[team][chave]) {
-                delete marcadoresAtuais[team][chave];
-                renderMarcadores();
-            }
-
+            if (marcadoresAtuais[team] && marcadoresAtuais[team][chave]) { delete marcadoresAtuais[team][chave]; renderMarcadores(); }
             try {
                 await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }); 
-                mostrarToast("Marcador removido.");
-            } catch(e) { 
-                mostrarToast("Erro ao apagar na nuvem."); 
-            }
+            } catch(e) { }
         }
 
         async function fetchMarcadores() {
@@ -591,13 +617,9 @@
                 const marcadores = marcadoresAtuais[team] || {};
                 Object.keys(marcadores).forEach(chave => {
                     const m = marcadores[chave]; if (!m) return;
+                    if (m.ts && Date.now() - m.ts > 60 * 60 * 1000) return; // Expira em 1H
                     
-                    // Mantém os marcadores visíveis durante 60 minutos
-                    if (m.ts && Date.now() - m.ts > 60 * 60 * 1000) return; 
-                    
-                    // Usa parseFloat para contornar problemas de tipagem (String vs Number)
-                    const lat = parseFloat(m.lat);
-                    const lng = parseFloat(m.lng);
+                    const lat = parseFloat(m.lat); const lng = parseFloat(m.lng);
                     if (isNaN(lat) || isNaN(lng)) return;
 
                     const cor = team === 'azul' ? 'text-blue-300' : 'text-yellow-300';
@@ -618,29 +640,42 @@
         }
 
         // =============================================================
-        // 5. GPS DE OPERADORES
+        // 6. GPS DOS OPERADORES E FOCAR NA POSIÇÃO
         // =============================================================
+        function focarNoJogador() {
+            if (!isGpsActive) { mostrarToast("Tem de ligar o Transmissor GPS primeiro!"); return; }
+            if (!meuGPSLatLng || !map) { mostrarToast("A aguardar sinal de satélite do seu telemóvel..."); return; }
+            map.flyTo([meuGPSLatLng.lat, meuGPSLatLng.lng], 18, { duration: 1.5 });
+            mostrarToast("A focar na sua posição...");
+        }
+
         function toggleGPS() {
             if (!session || !session.team) { mostrarToast("Deve fazer login."); return; }
             const btn = document.getElementById('btn-gps');
+            const btnFocar = document.getElementById('btn-focar-jogador');
+
             if (isGpsActive) {
                 if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
                 isGpsActive = false;
+                meuGPSLatLng = null;
                 btn.textContent = '📍 GPS: OFF'; btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600'); btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
+                btnFocar.classList.add('hidden');
                 mostrarToast("Transmissor GPS Desligado.");
             } else {
                 if (!("geolocation" in navigator)) { mostrarToast("GPS não suportado."); return; }
                 isGpsActive = true;
                 btn.textContent = '📍 GPS: ON'; btn.classList.remove('bg-gray-900', 'text-gray-400', 'border-gray-700'); btn.classList.add('bg-green-900', 'text-green-300', 'border-green-600');
+                btnFocar.classList.remove('hidden');
                 mostrarToast("A iniciar transmissão...");
 
                 gpsWatchId = navigator.geolocation.watchPosition(
                     async (position) => {
-                        const dadosGps = { lat: position.coords.latitude, lng: position.coords.longitude, user: session.label || session.user, ts: Date.now() };
+                        meuGPSLatLng = { lat: position.coords.latitude, lng: position.coords.longitude };
+                        const dadosGps = { lat: meuGPSLatLng.lat, lng: meuGPSLatLng.lng, user: session.label || session.user, ts: Date.now() };
                         try { await fetch(`${FIREBASE_BASE}/quiral_gps/${session.team}/${session.user}.json`, { method: 'PUT', body: JSON.stringify(dadosGps) }); } catch(e) {}
                     },
                     (error) => {
-                        isGpsActive = false; btn.textContent = '📍 GPS: OFF'; btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600'); btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700');
+                        isGpsActive = false; btn.textContent = '📍 GPS: OFF'; btn.classList.remove('bg-green-900', 'text-green-300', 'border-green-600'); btn.classList.add('bg-gray-900', 'text-gray-400', 'border-gray-700'); btnFocar.classList.add('hidden');
                         if (error.code === 1) mostrarToast("Permita o acesso à localização!"); else mostrarToast("Falha GPS.");
                     }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
                 );
@@ -682,19 +717,14 @@
         }
 
         // =============================================================
-        // 6. ADMIN & LAYOUT
+        // 7. ADMIN & LAYOUT
         // =============================================================
-        function toFirebaseKeyed(obj) { const out = {}; Object.keys(obj || {}).forEach(id => { out['n' + id] = obj[id]; }); return out; }
-        function fromFirebaseKeyed(raw) { const out = {}; if (!raw) return out; Object.keys(raw).forEach(k => { if (raw[k] == null) return; const id = String(k).replace(/^n/, ''); out[id] = raw[k]; }); return out; }
-
-        function marcarLayoutPendente() { layoutPendente = true; const btn = document.getElementById('btn-salvar-layout'); btn.textContent = 'SALVAR LAYOUT ●'; btn.classList.add('animate-pulse'); }
-        async function salvarLayout() {
-            if (!isAdmin) return; const btn = document.getElementById('btn-salvar-layout'); btn.disabled = true; btn.classList.remove('animate-pulse'); btn.textContent = 'SALVANDO...';
-            try { await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(nodePositions)) }); layoutPendente = false; btn.textContent = 'SALVO ✔'; } catch(e) { btn.textContent = 'ERRO'; }
-            setTimeout(() => { btn.textContent = 'SALVAR LAYOUT'; btn.disabled = false; }, 2000);
-        }
         async function fetchPositions() {
-            try { const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json?nocache=${Date.now()}`); const data = await res.json(); if (data && !layoutPendente) nodePositions = fromFirebaseKeyed(data); } catch (err) {}
+            try { 
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/positions_gps.json?nocache=${Date.now()}`); 
+                const data = await res.json(); 
+                if (data && !layoutPendente) nodePositions = fromFirebaseKeyed(data); 
+            } catch (err) {}
         }
 
         document.getElementById('btn-reset-logs').addEventListener('click', async () => {
@@ -706,7 +736,7 @@
         });
 
         // =============================================================
-        // 7. AUTENTICAÇÃO E CONTAS
+        // 8. AUTENTICAÇÃO E CONTAS
         // =============================================================
         function toggleCodinomeField() { const role = document.getElementById('login-role').value; const divCodinome = document.getElementById('div-codinome'); if (role === 'admin') divCodinome.classList.add('hidden'); else divCodinome.classList.remove('hidden'); }
         function openLoginModal() { if (session) { logout(); return; } document.getElementById('login-callsign').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden'); toggleCodinomeField(); const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); }
@@ -737,9 +767,21 @@
 
         function applySessionUI() {
             isAdmin = !!(session && session.role === 'admin'); const isCmd = !!(session && session.role === 'comandante');
-            document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin); document.getElementById('btn-salvar-layout').classList.toggle('hidden', !isAdmin); document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin); document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin); document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-marcador').classList.toggle('hidden', !isCmd); document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
-            const btnGps = document.getElementById('btn-gps'); const loginBtn = document.getElementById('btn-login'); const badge = document.getElementById('session-badge');
+            
+            document.getElementById('admin-hint').classList.toggle('hidden', !isAdmin); 
+            document.getElementById('btn-salvar-layout').classList.toggle('hidden', !isAdmin); 
+            document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin); 
+            document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin); 
+            document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-centro-campo').classList.toggle('hidden', !isAdmin);
+            
+            document.getElementById('btn-marcador').classList.toggle('hidden', !isCmd); 
+            document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
+            
+            const btnGps = document.getElementById('btn-gps'); 
+            const loginBtn = document.getElementById('btn-login'); 
+            const badge = document.getElementById('session-badge');
+            
             if (session) {
                 loginBtn.textContent = 'SAIR'; const cor = session.team === 'azul' ? 'text-blue-400' : session.team === 'amarelo' ? 'text-yellow-400' : 'text-gray-300';
                 badge.className = 'mt-2 text-xs ' + cor; badge.textContent = 'Conectado: ' + (session.label || session.user); badge.classList.remove('hidden');
@@ -780,7 +822,7 @@
         }
 
         // =============================================================
-        // 8. LOGS E HISTÓRICO
+        // 9. LOGS E HISTÓRICO E UPLINK
         // =============================================================
         function addLog(key, html, timeStr) {
             if (renderedLogKeys.has(key)) return; renderedLogKeys.add(key);
@@ -794,26 +836,6 @@
                 const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0)); entries.forEach(entry => addLog(entry.key, entry.m, entry.t));
             } catch (err) {}
         }
-        async function openHistoricoModal() {
-            if (!session) return; const box = document.getElementById('historico-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
-            const lista = document.getElementById('historico-lista'); lista.innerHTML = '<p class="text-gray-500 text-center">Carregando...</p>';
-            try {
-                let entradas = [];
-                if (isAdmin) {
-                    const [ra, ry] = await Promise.all([ fetch(`${FIREBASE_BASE}/quiral_ordens_log/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_ordens_log/amarelo.json?nocache=` + Date.now()) ]);
-                    const az = (await ra.json()) || {}, am = (await ry.json()) || {}; entradas = [ ...Object.values(az).map(e => ({ ...e, team: 'azul' })), ...Object.values(am).map(e => ({ ...e, team: 'amarelo' })) ];
-                } else if (session.team) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}.json?nocache=` + Date.now()); const data = (await res.json()) || {}; entradas = Object.values(data).map(e => ({ ...e, team: session.team }));
-                }
-                entradas = entradas.filter(Boolean).sort((a, b) => (b.ts || 0) - (a.ts || 0));
-                if (!entradas.length) { lista.innerHTML = '<p class="text-gray-500 text-center">Nenhuma ordem registada ainda.</p>'; return; }
-                lista.innerHTML = entradas.map(e => {
-                    const cor = e.team === 'azul' ? 'text-blue-400' : 'text-yellow-400'; const icone = e.ordem === 'atacar' ? '⚔' : '🛡'; const hora = e.ts ? new Date(e.ts).toLocaleTimeString('pt-PT', { hour12: false }) : '--:--:--';
-                    return `<div class="border-b border-gray-800 pb-1"><span class="text-gray-600">[${hora}]</span> <span class="${cor} font-bold">${e.team.toUpperCase()}</span> ${icone} Nó ${e.node} — <span class="text-gray-500">${e.autor || ''}</span></div>`;
-                }).join('');
-            } catch (err) { lista.innerHTML = '<p class="text-red-400 text-center">Erro ao carregar histórico.</p>'; }
-        }
-        function closeHistoricoModal() { const box = document.getElementById('historico-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
         async function exportarLog() {
             try {
                 const res = await fetch(LOGS_URL + '?nocache=' + Date.now()); const data = (await res.json()) || {}; const entradas = Object.values(data).sort((a, b) => (a.ts || 0) - (b.ts || 0));
@@ -822,9 +844,6 @@
             } catch (err) { mostrarToast('Falha ao exportar registo.'); }
         }
 
-        // =============================================================
-        // 9. UPLINK (Sincronização Principal)
-        // =============================================================
         function updateStatusBadge(type, playing) {
             const badge = document.getElementById('status-badge');
             if (type === 'ok' && playing) { badge.innerText = "SISTEMA ONLINE - JOGO EM ANDAMENTO"; badge.className = "mt-2 inline-block px-3 py-1 rounded text-xs md:text-sm font-bold bg-green-900/50 text-green-400 border border-green-500 pulse"; }
@@ -859,7 +878,10 @@
         // =============================================================
         async function bootDashboard() {
             applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
+            
+            await carregarCentroCampo(); // Lê o campo do momento antes de desenhar o mapa
             initLeafletMap();
+            
             await fetchPositions();
             fetchUplinkData(); fetchCloudLogs();
             if (session) { fetchComandos(); fetchMarcadores(); }
