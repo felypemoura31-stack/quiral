@@ -190,7 +190,7 @@
                     
                     <!-- BARRA DE FERRAMENTAS TÁTICAS -->
                     <div class="flex gap-2 flex-wrap justify-end">
-                        <button id="btn-marcador" onclick="ativarModoMarcador()" class="hidden bg-purple-950 hover:bg-purple-900 text-xs text-purple-300 px-3 py-1 rounded border border-purple-700 transition-colors">📍 MARCADOR</button>
+                        <button id="btn-marcador" onclick="handleMarcadorClick()" class="hidden bg-purple-950 hover:bg-purple-900 text-xs text-purple-300 px-3 py-1 rounded border border-purple-700 transition-colors">📍 MARCADOR</button>
                         <button id="btn-historico" onclick="openHistoricoModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">HISTÓRICO</button>
                         <button id="btn-exportar" onclick="exportarLog()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">EXPORTAR</button>
                         <button id="btn-salvar-layout" onclick="salvarLayout()" class="hidden bg-green-900 hover:bg-green-800 text-xs text-green-200 px-3 py-1 rounded border border-green-600 transition-colors shadow-[0_0_10px_rgba(34,197,94,0.3)]">SALVAR LAYOUT</button>
@@ -200,12 +200,17 @@
                 </div>
 
                 <p id="admin-hint" class="text-[10px] text-gray-500 mb-2 text-center hidden">Modo Edição Ativado: arraste os nós (1, 2...) no mapa e depois toque em "SALVAR LAYOUT".</p>
-                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mb-2 text-center">Toque em qualquer ponto do mapa para colocar um marcador tático para a sua equipa.</p>
+                <p id="marcador-hint" class="hidden text-[10px] text-purple-400 mb-2 text-center font-bold">Mova o mapa para colocar o alvo no sítio certo e toque em CONFIRMAR ALVO.</p>
 
                 <!-- O CONTAINER DO MAPA -->
                 <div id="map-container" class="relative w-full bg-black border border-gray-800 rounded z-0 flex-1 min-h-[400px] md:min-h-[500px]">
                     <div id="map-placeholder" class="absolute inset-0 flex items-center justify-center text-gray-500 text-sm z-10 pointer-events-none bg-gray-900">A iniciar Satélite...</div>
                     <div id="leaflet-map" class="absolute inset-0 w-full h-full z-0"></div>
+                    
+                    <!-- ALVO DE MIRA PARA MARCADOR (Estilo Uber) -->
+                    <div id="crosshair-target" class="hidden absolute inset-0 z-[500] pointer-events-none flex items-center justify-center">
+                        <span class="text-5xl drop-shadow-lg text-purple-400 opacity-90" style="text-shadow: 0 0 10px #a855f7;">✛</span>
+                    </div>
                 </div>
                 
                 <details class="mt-3 text-xs text-gray-500">
@@ -306,24 +311,9 @@
 
                 setTimeout(() => { map.invalidateSize(); }, 600);
 
-                // Evento de clique no mapa para Comandantes adicionarem Marcadores
-                map.on('click', function(e) {
-                    if (!colocandoMarcador || !session || session.role !== 'comandante') return;
-                    
-                    // Desliga o modo de inserção
-                    ativarModoMarcador(); 
-                    
-                    // Guarda as coordenadas e abre o modal HTML (em vez do prompt bloqueado)
-                    pendingMarkerCoords = { lat: e.latlng.lat, lng: e.latlng.lng };
-                    const box = document.getElementById('marcador-modal');
-                    const input = document.getElementById('marcador-input-nome');
-                    input.value = '';
-                    box.classList.remove('hidden');
-                    requestAnimationFrame(() => {
-                        box.classList.remove('opacity-0');
-                        input.focus();
-                    });
-                });
+                // O evento de clique nativo do mapa foi removido.
+                // O marcador agora usa a técnica do centro do mapa (crosshair)
+                // que é 100% à prova de falhas em qualquer telemóvel Android/iOS.
 
             } catch (err) { console.error("Erro Leaflet:", err); }
         }
@@ -404,92 +394,49 @@
             renderComandosOverlay(); 
         }
 
-        // -------------------------------------------------------------
-        // SISTEMA DE ORDENS E MARCADORES (COMANDO)
-        // -------------------------------------------------------------
-        function onNodeTap(id) {
-            if (session && session.role === 'comandante') { openOrdemModal(id); return; }
-            showNodeDetail(id);
-        }
-
-        function openOrdemModal(id) {
-            ordemNodeAlvo = id; document.getElementById('ordem-titulo').textContent = 'NÓ ' + id;
-            const box = document.getElementById('ordem-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
-        }
-        function closeOrdemModal() { const box = document.getElementById('ordem-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); ordemNodeAlvo = null; }
-
-        async function emitirOrdem(tipo) {
-            if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
-            const id = ordemNodeAlvo; const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
-            try {
-                if (tipo) {
-                    await fetch(path, { method: 'PUT', body: JSON.stringify({ ordem: tipo, ts: Date.now(), autor: session.label }) });
-                    // Histórico
-                    const chave = `o_${Date.now()}_n${id}`;
-                    await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify({ node: id, ordem: tipo, autor: session.label, ts: Date.now() }) });
-                } else {
-                    await fetch(path, { method: 'DELETE' });
-                }
-                await fetchComandos(); 
-            } catch(e) { mostrarToast("Erro ao emitir ordem."); }
-            closeOrdemModal();
-        }
-
-        function removerExpiradas(ordens) {
-            const limite = Date.now() - 15 * 60 * 1000; // Expira em 15 min
-            const out = {};
-            Object.keys(ordens).forEach(id => { if (ordens[id] && ordens[id].ts && ordens[id].ts > limite) out[id] = ordens[id]; });
-            return out;
-        }
-
-        async function fetchComandos() {
-            if (!session) { comandosAtuais = {}; renderComandosOverlay(); return; }
-            try {
-                let novoEstado = {};
-                // O Jogador/Comandante só saca as ordens da SUA equipa (Evita espionagem no código fonte)
-                if (isAdmin) {
-                    const [resAzul, resAmarelo] = await Promise.all([
-                        fetch(`${FIREBASE_BASE}/quiral_comandos/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_comandos/amarelo.json?nocache=` + Date.now())
-                    ]);
-                    novoEstado = { azul: removerExpiradas(fromFirebaseKeyed(await resAzul.json())), amarelo: removerExpiradas(fromFirebaseKeyed(await resAmarelo.json())) };
-                } else if (session.team) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_comandos/${session.team}.json?nocache=` + Date.now());
-                    novoEstado = { [session.team]: removerExpiradas(fromFirebaseKeyed(await res.json())) };
-                }
-                comandosAtuais = novoEstado;
-            } catch (err) {}
-            renderComandosOverlay();
-        }
-
-        function renderComandosOverlay() {
-            document.querySelectorAll('.ordem-badge').forEach(b => { b.textContent = ''; b.classList.add('hidden'); b.classList.remove('bg-red-600', 'bg-blue-600', 'text-white'); });
-            Object.keys(comandosAtuais).forEach(team => {
-                const ordens = comandosAtuais[team] || {};
-                Object.keys(ordens).forEach(id => {
-                    const o = ordens[id]; if (!o || !o.ordem) return;
-                    const badge = document.getElementById(`ordem-badge-${team}-${id}`); if (!badge) return;
-                    badge.textContent = o.ordem === 'atacar' ? '⚔' : '🛡'; 
-                    badge.classList.remove('hidden'); 
-                    badge.classList.add('text-white');
-                    badge.classList.add(o.ordem === 'atacar' ? 'bg-red-600' : 'bg-blue-600');
-                });
-            });
-        }
-
-        function ativarModoMarcador() {
+        function handleMarcadorClick() {
             if (!session || session.role !== 'comandante') return;
-            colocandoMarcador = !colocandoMarcador;
+
+            if (!colocandoMarcador) {
+                // Ativar modo de mira
+                colocandoMarcador = true;
+                updateMarcadorUI();
+                mostrarToast("Mova o mapa para colocar a mira no local desejado.");
+            } else {
+                // Confirmar posição!
+                if(!map) return;
+                const center = map.getCenter();
+                pendingMarkerCoords = { lat: center.lat, lng: center.lng };
+                
+                colocandoMarcador = false;
+                updateMarcadorUI();
+
+                const box = document.getElementById('marcador-modal');
+                const input = document.getElementById('marcador-input-nome');
+                input.value = '';
+                box.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    box.classList.remove('opacity-0');
+                    input.focus();
+                });
+            }
+        }
+
+        function updateMarcadorUI() {
             const btn = document.getElementById('btn-marcador'); 
+            const crosshair = document.getElementById('crosshair-target');
             document.getElementById('marcador-hint').classList.toggle('hidden', !colocandoMarcador);
-            btn.classList.toggle('bg-purple-700', colocandoMarcador); 
-            btn.classList.toggle('bg-purple-950', !colocandoMarcador); 
-            btn.textContent = colocandoMarcador ? '📍 TOQUE NO MAPA...' : '📍 MARCADOR';
             
-            if (colocandoMarcador) mostrarToast("Toque num local vazio do mapa para colocar o marcador.");
-            
-            // Modifica o cursor para alvo
-            if (map && map.getContainer()) {
-                map.getContainer().style.cursor = colocandoMarcador ? 'crosshair' : '';
+            if (colocandoMarcador) {
+                btn.classList.add('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse');
+                btn.classList.remove('bg-purple-950', 'text-purple-300', 'border-purple-700');
+                btn.textContent = '✔️ CONFIRMAR ALVO';
+                crosshair.classList.remove('hidden');
+            } else {
+                btn.classList.remove('bg-green-700', 'text-white', 'border-green-500', 'animate-pulse');
+                btn.classList.add('bg-purple-950', 'text-purple-300', 'border-purple-700');
+                btn.textContent = '📍 MARCADOR';
+                crosshair.classList.add('hidden');
             }
         }
 
@@ -562,7 +509,10 @@
                     const icon = L.divIcon({ className: 'custom-node-icon', html: iconHTML, iconSize: [40, 40], iconAnchor: [20, 35] });
                     const marker = L.marker([m.lat, m.lng], {icon: icon}).addTo(map);
                     
-                    marker.on('click', () => removerMarcador(team, chave));
+                    marker.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e); // Garante que o toque apaga sem bugs
+                        removerMarcador(team, chave);
+                    });
                     leafletTacticalMarkers[chave] = marker;
                 });
             });
