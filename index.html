@@ -70,10 +70,10 @@
             
             <label class="block text-xs text-gray-400 mb-1">Cargo / Permissão:</label>
             <select id="login-role" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-green-500 focus:outline-none" onchange="toggleCodinomeField()">
-                <option value="jogador_azul">Jogador - Equipa AZUL</option>
-                <option value="comandante_azul">Comandante - Equipa AZUL</option>
-                <option value="jogador_amarelo">Jogador - Equipa AMARELA</option>
-                <option value="comandante_amarelo">Comandante - Equipa AMARELA</option>
+                <option value="jogador_azul">Jogador - Equipe AZUL</option>
+                <option value="comandante_azul">Comandante - Equipe AZUL</option>
+                <option value="jogador_amarelo">Jogador - Equipe AMARELO</option>
+                <option value="comandante_amarelo">Comandante - Equipe AMARELO</option>
                 <option value="admin">Administrador (Central)</option>
             </select>
 
@@ -82,7 +82,7 @@
                 <input type="text" id="login-callsign" placeholder="Ex: Falcão, Alfa-1..." autocomplete="off" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-green-500 focus:outline-none">
             </div>
 
-            <label class="block text-xs text-gray-400 mb-1">Senha da Equipa:</label>
+            <label class="block text-xs text-gray-400 mb-1">Senha da Equipe:</label>
             <input type="password" id="login-pass" placeholder="***" class="w-full bg-black border border-gray-600 rounded p-2 mb-4 text-white focus:border-green-500 focus:outline-none" onkeydown="if(event.key==='Enter') autenticar()">
 
             <p id="login-erro" class="text-red-400 text-xs mb-3 hidden"></p>
@@ -176,7 +176,7 @@
                         <p id="game-mode" class="text-gray-400 text-xs md:text-sm mt-1">MODO: --</p>
                     </div>
                     <div class="text-center w-1/3">
-                        <h3 class="text-lg md:text-xl text-yellow-500 font-bold mb-1">AMARELA</h3>
+                        <h3 class="text-lg md:text-xl text-yellow-500 font-bold mb-1">AMARELO</h3>
                         <div id="score-amarelo" class="text-4xl md:text-6xl font-bold text-yellow-400" style="text-shadow: 0 0 10px #a60;">0</div>
                     </div>
                 </div>
@@ -416,7 +416,7 @@
         function showNodeDetail(id) {
             const node = (lastFullData && lastFullData.nos && lastFullData.nos[id - 1]) || null; if (!node) { showModal('NÓ ' + id, 'Sem dados disponíveis ainda.'); return; }
             let estado = node.online ? '<span class="text-green-400">EM LINHA</span>' : '<span class="text-red-400">OFFLINE</span>'; let extra = '';
-            if (node.online) { if (lastFullData.md === 'QUIRAL') extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>'; else extra = node.owner === 1 ? '<span class="text-blue-400">Equipa Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipa Amarela</span>' : '<span class="text-gray-400">Neutro</span>'; }
+            if (node.online) { if (lastFullData.md === 'QUIRAL') extra = node.ativo ? '<span class="text-green-400">Ativo</span>' : '<span class="text-red-400">Capturado</span>'; else extra = node.owner === 1 ? '<span class="text-blue-400">Equipe Azul</span>' : node.owner === 2 ? '<span class="text-yellow-400">Equipe Amarela</span>' : '<span class="text-gray-400">Neutro</span>'; }
             showModal('NÓ ' + id, 'Estado: ' + estado + '<br>' + extra);
         }
 
@@ -588,7 +588,7 @@
             try {
                 const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}/${chave}.json`, { method: 'PUT', body: JSON.stringify(dado) }); 
                 if (!res.ok) throw new Error("Erro de Servidor");
-                mostrarToast("📍 Alvo sincronizado com a equipa!");
+                mostrarToast("📍 Alvo sincronizado com a equipe!");
             } catch(e) { 
                 mostrarToast("Aviso Firebase: Marcou visível só para si (Veja as regras)."); 
             }
@@ -792,7 +792,7 @@
                 let teamReal = roleKey.includes('azul') ? 'azul' : (roleKey.includes('amarelo') ? 'amarelo' : null);
                 session = { role: roleReal, team: teamReal, label: roleKey === 'admin' ? 'Administrador' : callsign, user: roleKey === 'admin' ? 'admin' : callsign.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() };
                 sessionStorage.setItem('quiral_session', JSON.stringify(session)); closeLoginModal(); applySessionUI(); fetchComandos(); fetchMarcadores();
-            } else { erroEl.textContent = 'Senha incorreta para a equipa escolhida.'; erroEl.classList.remove('hidden'); }
+            } else { erroEl.textContent = 'Senha incorreta para a equipe escolhida.'; erroEl.classList.remove('hidden'); }
         }
 
         function applySessionUI() {
