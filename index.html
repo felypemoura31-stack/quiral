@@ -432,6 +432,46 @@
         }
         function closeOrdemModal() { const box = document.getElementById('ordem-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); ordemNodeAlvo = null; }
 
+        async function openHistoricoModal() {
+            const box = document.getElementById('historico-modal');
+            box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            
+            const lista = document.getElementById('historico-lista');
+            lista.innerHTML = '<p class="text-center text-gray-500 mt-4">Buscando histórico...</p>';
+            
+            try {
+                let logs = {};
+                if (isAdmin) {
+                    const [resAzul, resAmarelo] = await Promise.all([
+                        fetch(`${FIREBASE_BASE}/quiral_ordens_log/azul.json?nocache=${Date.now()}`),
+                        fetch(`${FIREBASE_BASE}/quiral_ordens_log/amarelo.json?nocache=${Date.now()}`)
+                    ]);
+                    const dataAzul = await resAzul.json() || {};
+                    const dataAmarelo = await resAmarelo.json() || {};
+                    logs = { ...dataAzul, ...dataAmarelo };
+                } else if (session && session.team) {
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_ordens_log/${session.team}.json?nocache=${Date.now()}`);
+                    logs = await res.json() || {};
+                }
+                
+                lista.innerHTML = '';
+                const entries = Object.values(logs).sort((a, b) => b.ts - a.ts);
+                
+                if (entries.length === 0) {
+                    lista.innerHTML = '<p class="text-center text-gray-500 mt-4">Nenhuma ordem emitida.</p>';
+                } else {
+                    entries.forEach(e => {
+                        const timeStr = new Date(e.ts).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                        const acao = e.ordem === 'atacar' ? '<span class="text-red-400 font-bold">ATACAR</span>' : '<span class="text-blue-400 font-bold">DEFENDER</span>';
+                        lista.innerHTML += `<div class="border-b border-gray-800 pb-2 mb-2"><span class="text-gray-500">[${timeStr}]</span> <b>${e.autor}</b> ordenou ${acao} o <b>NÓ ${e.node}</b>.</div>`;
+                    });
+                }
+            } catch (err) {
+                lista.innerHTML = '<p class="text-center text-red-500 mt-4">Erro ao carregar histórico.</p>';
+            }
+        }
+        function closeHistoricoModal() { const box = document.getElementById('historico-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+
         async function emitirOrdem(tipo) {
             if (!ordemNodeAlvo || !session || session.role !== 'comandante' || !session.team) { closeOrdemModal(); return; }
             const id = ordemNodeAlvo; const path = `${FIREBASE_BASE}/quiral_comandos/${session.team}/n${id}.json`;
@@ -954,13 +994,14 @@
                             const anterior = donosAnterioresNos[id];
                             if ((anterior === 1 || anterior === 2) && node.owner === 0) {
                                 const nomeEquipe = anterior === 1 ? "AZUL" : "AMARELO";
-                                if (isAdmin) { 
-                                    const timeStr = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-                                    fetch(LOGS_URL, {
-                                        method: 'POST',
-                                        body: JSON.stringify({ ts: Date.now(), m: `Nó ${id} <span class="text-gray-400">NEUTRALIZADO</span> (Perdido pela equipe ${nomeEquipe})`, t: timeStr })
-                                    });
-                                }
+                                // Qualquer dispositivo relata a neutralização à nuvem de imediato.
+                                // Usamos uma janela de tempo de 10s (timeKey) para a Firebase sobrepor avisos idênticos e evitar duplicados no ecrã.
+                                const timeKey = Math.floor(Date.now() / 10000);
+                                const timeStr = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                                fetch(`${FIREBASE_BASE}/quiral_logs/neut_${id}_${timeKey}.json`, {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ ts: Date.now(), m: `Nó ${id} <span class="text-gray-400">NEUTRALIZADO</span> (Perdido pela equipe ${nomeEquipe})`, t: timeStr })
+                                });
                             }
                         }
                         donosAnterioresNos[id] = node.owner;
