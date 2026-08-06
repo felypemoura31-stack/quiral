@@ -1032,13 +1032,7 @@
                 if (estadoAnteriorJogo === 'OFF' && isPlaying) {
                     document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; renderedLogKeys.clear();
                     pontosMissao = { azul: 0, amarelo: 0 }; missoesAtivas = {}; renderMissaoUI(); missoesProcessadas.clear();
-                    // CORRIGIDO: antes só limpava o Firebase se este navegador fosse o admin.
-                    // Se ninguém estivesse logado como admin bem nesse instante, o log de
-                    // combate e os pontos de missão da partida anterior nunca eram apagados
-                    // no banco, e voltavam a aparecer/somar na partida seguinte. Agora
-                    // QUALQUER navegador conectado dispara essa limpeza (é uma operação
-                    // idempotente, não tem problema em rodar de mais de um lugar).
-                    fetch(LOGS_URL, { method: 'PUT', body: 'null' });
+                    fetch(LOGS_URL, { method: 'PUT', body: 'null' }); 
                     fetch(`${FIREBASE_BASE}/quiral_missoes.json`, { method: 'PUT', body: 'null' });
                 }
 
