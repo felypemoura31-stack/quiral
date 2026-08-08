@@ -1032,6 +1032,15 @@
                 if (estadoAnteriorJogo === 'OFF' && isPlaying) {
                     document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; renderedLogKeys.clear();
                     pontosMissao = { azul: 0, amarelo: 0 }; missoesAtivas = {}; renderMissaoUI(); missoesProcessadas.clear();
+                    // IMPORTANTE: esta limpeza NÃO pode depender de "isAdmin". O admin
+                    // normalmente está mexendo na Central física nesse momento, não
+                    // logado no navegador. Se só o admin pudesse limpar, e ele não
+                    // estivesse logado bem na hora da transição OFF->ON, os pontos de
+                    // missão e o log de combate da partida anterior ficavam "grudados"
+                    // na partida nova (esse era o bug). Qualquer cliente conectado
+                    // agora participa da limpeza - é seguro repetir a mesma limpeza
+                    // várias vezes (idempotente), então não tem problema em vários
+                    // navegadores abertos tentarem ao mesmo tempo.
                     fetch(LOGS_URL, { method: 'PUT', body: 'null' }); 
                     fetch(`${FIREBASE_BASE}/quiral_missoes.json`, { method: 'PUT', body: 'null' });
                 }
