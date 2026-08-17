@@ -227,8 +227,15 @@
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6 mt-4 md:mt-6">
 
             <!-- COLUNA ESQUERDA: MISSÕES -->
-            <div class="lg:col-span-1 space-y-4 md:space-y-6">
-                <div id="missions-container" class="flex flex-col gap-2"></div>
+            <div class="lg:col-span-1 bg-gray-900/80 border border-gray-700 rounded-lg shadow-lg flex flex-col">
+                <div class="p-3 border-b border-gray-800 bg-gray-800/50 rounded-t-lg flex justify-between items-center">
+                    <h2 class="text-sm md:text-base text-gray-300 font-bold flex items-center gap-2">
+                        <span class="text-purple-400">🎯</span> MISSÕES
+                    </h2>
+                </div>
+                <div id="missions-container" class="flex-1 flex flex-col gap-2 p-3">
+                    <div class="flex-1 flex items-center justify-center text-center text-gray-600 text-xs italic py-8">Carregando missões...</div>
+                </div>
             </div>
 
             <!-- COLUNA CENTRAL: MAPA -->
@@ -512,7 +519,16 @@
             const container = document.getElementById('missions-container');
             const isConquista = lastFullData && lastFullData.md && lastFullData.md.toUpperCase() === 'CONQUISTA';
 
-            if (isConquista || Object.keys(missoesAtivas).length === 0) { container.innerHTML = ''; return; }
+            if (isConquista) {
+                container.innerHTML = `<div class="flex-1 flex items-center justify-center text-center text-gray-600 text-xs italic py-8">Missões não se aplicam<br>ao modo Conquista.</div>`;
+                return;
+            }
+
+            if (Object.keys(missoesAtivas).length === 0) {
+                const dica = isAdmin ? '<br>Toque em 🎯 MISSÃO no mapa para lançar uma.' : '';
+                container.innerHTML = `<div class="flex-1 flex items-center justify-center text-center text-gray-600 text-xs italic py-8">Nenhuma missão ativa.${dica}</div>`;
+                return;
+            }
 
             let html = '';
             Object.values(missoesAtivas).forEach(m => {
