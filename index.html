@@ -176,6 +176,19 @@
         </div>
     </div>
 
+    <!-- MODAL: NÓS EM JOGO -->
+    <div id="nos-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[3500] hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full text-center">
+            <h3 class="text-xl text-orange-400 mb-2 font-bold">NÓS EM JOGO</h3>
+            <p class="text-xs text-gray-400 mb-4">Desmarque os nós que não serão usados nesta partida. Eles somem do mapa e da contagem para todo mundo.</p>
+            <div id="nos-lista" class="grid grid-cols-5 gap-2 mb-4"></div>
+            <div class="flex justify-between gap-2">
+                <button onclick="closeNosModal()" class="w-1/2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded font-bold border border-gray-600">CANCELAR</button>
+                <button onclick="salvarNosAtivos()" class="w-1/2 px-4 py-2 bg-orange-900 hover:bg-orange-800 text-white rounded font-bold border border-orange-600">SALVAR</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-[4000] bg-gray-900 border border-green-600 text-green-300 text-xs px-4 py-2 rounded-full shadow-lg transition-opacity"></div>
 
     <header class="text-center w-full max-w-6xl mx-auto border-b border-gray-800 pb-4 mb-4 relative flex flex-col md:block items-center">
@@ -252,6 +265,7 @@
                         <button id="btn-ocultar-placar" onclick="toggleOcultarPlacar()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 px-3 py-1 rounded border border-gray-600 transition-colors">👁️ OCULTAR PLACAR</button>
                         
                         <button id="btn-centro-campo" onclick="handleCentroClick()" class="hidden bg-orange-950 hover:bg-orange-900 text-xs text-orange-300 px-3 py-1 rounded border border-orange-800 transition-colors shadow-[0_0_8px_rgba(234,88,12,0.3)]">🗺️ MUDAR CAMPO</button>
+                        <button id="btn-config-nos" onclick="abrirNosModal()" class="hidden bg-orange-950 hover:bg-orange-900 text-xs text-orange-300 px-3 py-1 rounded border border-orange-800 transition-colors">⚙️ NÓS EM JOGO</button>
                         <button id="btn-salvar-layout" onclick="salvarLayout()" class="hidden bg-green-900 hover:bg-green-800 text-xs text-green-200 px-3 py-1 rounded border border-green-600 transition-colors shadow-[0_0_10px_rgba(34,197,94,0.3)]">SALVAR LAYOUT</button>
                         <button id="btn-contas" onclick="openContasModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">SENHAS</button>
                         <button id="btn-reset-logs" onclick="resetarJogo()" class="hidden bg-red-950 hover:bg-red-900 text-xs text-red-300 px-3 py-1 rounded border border-red-800 transition-colors">RESET JOGO</button>
@@ -335,7 +349,17 @@
         let missoesAtivas = {};
         let pontosMissao = { azul: 0, amarelo: 0 };
         let missoesProcessadas = new Set(); // Trava Anti-Duplicação
-        
+
+        // --- NÓS EM JOGO (admin escolhe quais dos até 10 nós participam da partida) ---
+        const MAX_NOS = 10;
+        let nosAtivosConfig = null; // null = ainda não veio do Firebase -> trata todos como ativos (comportamento antigo)
+
+        function isNodeAtivo(id) {
+            if (!nosAtivosConfig) return true;
+            if (nosAtivosConfig[id] === undefined) return true; // nó nunca configurado = ativo por padrão
+            return nosAtivosConfig[id] !== false;
+        }
+
         let map = null;
         let leafletNodeMarkers = {}; 
         let leafletPlayerMarkers = {}; 
@@ -386,6 +410,13 @@
             
             data.nos.forEach((node, index) => {
                 const id = index + 1;
+
+                if (!isNodeAtivo(id)) {
+                    if (leafletNodeMarkers[id]) { map.removeLayer(leafletNodeMarkers[id]); delete leafletNodeMarkers[id]; }
+                    delete nodePositions[id];
+                    return;
+                }
+
                 let cssClass = "offline";
                 if (node.online) {
                     if (isQuiral) { cssClass = node.ativo ? "active-green" : "inactive-red"; }
@@ -931,6 +962,44 @@
             } catch(e) { mostrarToast("Erro ao alterar visibilidade do placar."); }
         }
 
+        async function fetchNosAtivos() {
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/nos_ativos.json?nocache=${Date.now()}`);
+                const data = await res.json();
+                nosAtivosConfig = data ? fromFirebaseKeyed(data) : null;
+            } catch(e) {}
+        }
+
+        function abrirNosModal() {
+            if (!isAdmin) return;
+            const lista = document.getElementById('nos-lista');
+            lista.innerHTML = '';
+            for (let id = 1; id <= MAX_NOS; id++) {
+                const ativo = isNodeAtivo(id);
+                lista.innerHTML += `
+                    <label class="flex flex-col items-center gap-1 bg-black/40 border ${ativo ? 'border-green-600' : 'border-gray-700'} rounded p-2 cursor-pointer text-xs text-gray-300">
+                        <input type="checkbox" id="chk-no-${id}" ${ativo ? 'checked' : ''} class="w-4 h-4 accent-green-500">
+                        Nó ${id}
+                    </label>`;
+            }
+            const box = document.getElementById('nos-modal');
+            box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0'));
+        }
+        function closeNosModal() { const box = document.getElementById('nos-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+
+        async function salvarNosAtivos() {
+            if (!isAdmin) return;
+            const novoConfig = {};
+            for (let id = 1; id <= MAX_NOS; id++) { novoConfig[id] = document.getElementById(`chk-no-${id}`).checked; }
+            try {
+                await fetch(`${FIREBASE_BASE}/quiral_config/nos_ativos.json`, { method: 'PUT', body: JSON.stringify(toFirebaseKeyed(novoConfig)) });
+                nosAtivosConfig = novoConfig;
+                closeNosModal();
+                mostrarToast("Configuração de nós em jogo salva!");
+                if (lastFullData) renderVisuals(lastFullData);
+            } catch(e) { mostrarToast("Erro ao salvar configuração de nós."); }
+        }
+
         function toggleCodinomeField() { const role = document.getElementById('login-role').value; const divCodinome = document.getElementById('div-codinome'); if (role === 'admin') divCodinome.classList.add('hidden'); else divCodinome.classList.remove('hidden'); }
         function openLoginModal() { if (session) { logout(); return; } document.getElementById('login-callsign').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden'); toggleCodinomeField(); const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); }
         function closeLoginModal() { const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
@@ -966,6 +1035,7 @@
             document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin); 
             document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-centro-campo').classList.toggle('hidden', !isAdmin);
+            document.getElementById('btn-config-nos').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-missao').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-ocultar-placar').classList.toggle('hidden', !isAdmin);
             
@@ -1095,9 +1165,11 @@
                 updateStatusBadge('ok', isPlaying);
 
                 if (data.nos && Array.isArray(data.nos)) {
-                    const online = data.nos.filter(n => n.online).length; document.getElementById('node-count').textContent = `(${online}/${data.nos.length} online)`;
+                    const nosEmJogo = data.nos.filter((n, index) => isNodeAtivo(index + 1));
+                    const online = nosEmJogo.filter(n => n.online).length; document.getElementById('node-count').textContent = `(${online}/${nosEmJogo.length} online)`;
                     data.nos.forEach((node, index) => {
                         const id = index + 1;
+                        if (!isNodeAtivo(id)) return;
                         if (estadoAnteriorJogo === 'ON' && isPlaying && !isConquista) {
                             const anterior = donosAnterioresNos[id];
                             if ((anterior === 1 || anterior === 2) && node.owner === 0) {
@@ -1133,9 +1205,9 @@
         async function bootDashboard() {
             applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
             await carregarCentroCampo(); initLeafletMap();
-            await fetchPositions(); fetchUplinkData(); fetchCloudLogs(); fetchMissoes();
+            await fetchPositions(); await fetchNosAtivos(); fetchUplinkData(); fetchCloudLogs(); fetchMissoes();
             if (session) { fetchComandos(); fetchMarcadores(); }
-            setInterval(fetchUplinkData, 2000); setInterval(fetchCloudLogs, 3000); setInterval(fetchPositions, 10000); setInterval(syncPlayersOnMap, 3000); setInterval(fetchMissoes, 5000);
+            setInterval(fetchUplinkData, 2000); setInterval(fetchCloudLogs, 3000); setInterval(fetchPositions, 10000); setInterval(syncPlayersOnMap, 3000); setInterval(fetchMissoes, 5000); setInterval(fetchNosAtivos, 8000);
             setInterval(() => { if(session) { fetchComandos(); fetchMarcadores(); } }, 4000);
         }
         window.addEventListener('load', bootDashboard);
