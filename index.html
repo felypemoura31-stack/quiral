@@ -605,12 +605,22 @@
             } catch(e) {}
         }
 
+        let vistasMissaoIds = new Set();
+        let missoesBootCarregado = false;
+
         async function fetchMissoes() {
             try {
                 const res = await fetch(`${FIREBASE_BASE}/quiral_missoes.json?nocache=${Date.now()}`);
                 const data = await res.json() || {};
                 pontosMissao = { azul: data.pontos?.azul || 0, amarelo: data.pontos?.amarelo || 0 };
                 missoesAtivas = data.ativas || {};
+
+                // Notifica quando uma missão nova aparece (não na primeira carga da página).
+                const idsAtuais = Object.keys(missoesAtivas);
+                if (missoesBootCarregado && idsAtuais.some(id => !vistasMissaoIds.has(id))) tocarNotificacao();
+                vistasMissaoIds = new Set(idsAtuais);
+                missoesBootCarregado = true;
+
                 renderMissaoUI();
             } catch(e) {}
         }
@@ -825,8 +835,8 @@
                 await fetch(`${FIREBASE_BASE}/quiral_config/chat.json`, { method: 'PUT', body: 'null' });
 
                 document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; renderedLogKeys.clear();
-                renderedChatKeys.clear(); document.getElementById('chat-lista').innerHTML = '';
-                marcadoresAtuais = {}; renderMarcadores(); comandosAtuais = {}; renderComandosOverlay(); 
+                zerarChatLocal();
+                marcadoresAtuais = {}; renderMarcadores(); comandosAtuais = {}; renderComandosOverlay();
                 pontosMissao = { azul: 0, amarelo: 0 }; missoesAtivas = {}; renderMissaoUI(); missoesProcessadas.clear();
                 mostrarToast('Jogo reiniciado com sucesso.');
             } catch(e){ mostrarToast('Erro ao reiniciar base de dados.'); }
@@ -973,6 +983,9 @@
             try { await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${team}/${chave}.json`, { method: 'DELETE' }); } catch(e) { }
         }
 
+        let vistasMarcadoresKeys = new Set();
+        let marcadoresBootCarregado = false;
+
         async function fetchMarcadores() {
             if (!session) { marcadoresAtuais = {}; renderMarcadores(); return; }
             try {
@@ -980,10 +993,20 @@
                     const [ra, ry] = await Promise.all([ fetch(`${FIREBASE_BASE}/quiral_config/marcadores/azul.json?nocache=` + Date.now()), fetch(`${FIREBASE_BASE}/quiral_config/marcadores/amarelo.json?nocache=` + Date.now()) ]);
                     marcadoresAtuais = { azul: (await ra.json()) || {}, amarelo: (await ry.json()) || {} };
                 } else if (session.team) {
-                    const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}.json?nocache=` + Date.now()); 
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_config/marcadores/${session.team}.json?nocache=` + Date.now());
                     marcadoresAtuais = { [session.team]: (await res.json()) || {} };
                 } else { marcadoresAtuais = {}; }
             } catch (err) {}
+
+            // Notifica quando um marcador novo aparece (só o comandante coloca
+            // marcador - ver handleMarcadorClick - então isso já é "do comando"
+            // por definição). Não dispara na primeira carga da página.
+            const chavesAtuais = new Set();
+            Object.keys(marcadoresAtuais).forEach(team => Object.keys(marcadoresAtuais[team] || {}).forEach(chave => chavesAtuais.add(team + '/' + chave)));
+            if (marcadoresBootCarregado) { for (const k of chavesAtuais) { if (!vistasMarcadoresKeys.has(k)) { tocarNotificacao(); break; } } }
+            vistasMarcadoresKeys = chavesAtuais;
+            marcadoresBootCarregado = true;
+
             renderMarcadores();
         }
 
@@ -1261,19 +1284,50 @@
         }
 
         // ==========================================
+        // NOTIFICAÇÃO SONORA - toca em missão nova, mensagem de chat nova e
+        // marcador tático novo (colocado pelo comandante). Vibração + som;
+        // o som pode ser bloqueado pelo navegador até o primeiro toque na
+        // página (política de autoplay), por isso o .catch silencioso.
+        // ==========================================
+        const somNotificacao = new Audio('notification.mp3');
+        function tocarNotificacao() {
+            try { if (navigator.vibrate) navigator.vibrate(150); } catch (e) {}
+            try { somNotificacao.currentTime = 0; somNotificacao.play().catch(() => {}); } catch (e) {}
+        }
+
+        // ==========================================
         // CHAT DE EQUIPE - azul fala só com azul, amarelo só com amarelo, o
         // admin lê os dois canais (sem enviar). Cada equipe é um nó separado
         // no Firebase (quiral_config/chat/azul, quiral_config/chat/amarelo -
         // aninhado dentro de quiral_config porque as regras de segurança do
         // banco só liberam os nós já conhecidos, um nó novo na raiz tipo
-        // "quiral_chat" cai em "Permission denied"), mesmo padrão
-        // de fetchCloudLogs/addLog acima. Liberado/travado automaticamente
-        // junto do estado da partida (data.st) que já é monitorado em
-        // fetchUplinkData; o histórico é zerado a cada início de partida
-        // (mesmo PUT null que já limpa quiral_logs e quiral_missoes).
-        let chatCanalAtual = null;
-        let renderedChatKeys = new Set();
-        let chatPollInterval = null;
+        // "quiral_chat" cai em "Permission denied"), mesmo padrão de
+        // fetchCloudLogs/addLog acima. Liberado/travado automaticamente junto
+        // do estado da partida (data.st), monitorado em fetchUplinkData; o
+        // histórico é zerado a cada início de partida (mesmo PUT null que já
+        // limpa quiral_logs e quiral_missoes). O polling roda em segundo
+        // plano sempre (não só com o modal aberto) para poder notificar o
+        // jogador mesmo com o chat fechado; o admin acompanha os dois canais
+        // ao mesmo tempo para notificação, mas só vê um por vez na tela.
+        let chatCanalAtual = null; // qual canal está sendo exibido no modal agora (null = modal fechado)
+        let renderedChatKeys = { azul: new Set(), amarelo: new Set() };
+        let chatBootCarregado = { azul: false, amarelo: false };
+
+        function canaisChatRelevantes() {
+            if (isAdmin) return ['azul', 'amarelo'];
+            if (session && session.team) return [session.team];
+            return [];
+        }
+
+        // Zera o rastreamento local dos dois canais (usado quando o próprio
+        // Firebase é zerado: início de partida ou RESET JOGO), pra não achar
+        // que tudo que já existia antes é "mensagem nova" e disparar
+        // notificação à toa na próxima rodada de polling.
+        function zerarChatLocal() {
+            renderedChatKeys = { azul: new Set(), amarelo: new Set() };
+            chatBootCarregado = { azul: false, amarelo: false };
+            const chatBox = document.getElementById('chat-lista'); if (chatBox) chatBox.innerHTML = '';
+        }
 
         function atualizarTituloChat() {
             const titulo = document.getElementById('chat-titulo');
@@ -1289,54 +1343,92 @@
             document.getElementById('chat-fechado-aviso').classList.toggle('hidden', isAdmin || partidaRodando);
         }
 
+        // Desenha uma mensagem na lista visível. cmd=true (comandante) ganha
+        // a estrelinha ★ ao lado do nome, pra equipe reconhecer na hora
+        // quando é uma mensagem vinda do comando.
+        function addChatMsgDOM(from, texto, timeStr, cmd) {
+            const box = document.getElementById('chat-lista');
+            const cor = chatCanalAtual === 'azul' ? 'text-blue-400' : 'text-yellow-400';
+            const nome = cmd ? `★ ${from}` : from;
+            const row = document.createElement('div');
+            row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> <b class="${cor}">${nome}:</b> <span class="text-gray-200">${texto}</span>`;
+            box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        // Busca e redesenha o histórico inteiro de um canal do zero - usado
+        // ao abrir o modal ou trocar de aba, já que mensagens recebidas com
+        // o modal fechado não tinham onde ser desenhadas ainda.
+        async function carregarEExibirChat(canal) {
+            document.getElementById('chat-lista').innerHTML = '';
+            const vistos = new Set();
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/chat/${canal}.json?nocache=` + Date.now());
+                const data = await res.json();
+                if (data) {
+                    const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                    entries.forEach(e => { addChatMsgDOM(e.from, e.m, e.t, e.cmd); vistos.add(e.key); });
+                }
+            } catch (err) {}
+            // Marca tudo que já foi desenhado aqui como "visto", pra o polling em
+            // segundo plano (pollChat) só tratar como novidade o que chegar DEPOIS
+            // desta sincronização - senão ele redesenharia tudo de novo (e tocaria
+            // a notificação) no primeiro ciclo dele.
+            renderedChatKeys[canal] = vistos;
+            chatBootCarregado[canal] = true;
+        }
+
         function openChatModal() {
             if (!session || !(session.team || isAdmin)) return;
             chatCanalAtual = isAdmin ? 'azul' : session.team;
-            renderedChatKeys.clear();
-            document.getElementById('chat-lista').innerHTML = '';
             document.getElementById('chat-admin-tabs').classList.toggle('hidden', !isAdmin);
             atualizarTituloChat();
             atualizarEstadoChatUI();
             const box = document.getElementById('chat-modal');
             box.classList.remove('hidden');
             requestAnimationFrame(() => box.classList.remove('opacity-0'));
-            fetchChat();
-            if (chatPollInterval) clearInterval(chatPollInterval);
-            chatPollInterval = setInterval(fetchChat, 2500);
+            carregarEExibirChat(chatCanalAtual);
         }
         function closeChatModal() {
             const box = document.getElementById('chat-modal');
             box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200);
-            if (chatPollInterval) { clearInterval(chatPollInterval); chatPollInterval = null; }
+            chatCanalAtual = null; // só para de desenhar ao vivo - o polling de notificação continua rodando
         }
         function trocarCanalChat(canal) {
             if (!isAdmin || chatCanalAtual === canal) return;
-            chatCanalAtual = canal; renderedChatKeys.clear();
-            document.getElementById('chat-lista').innerHTML = '';
+            chatCanalAtual = canal;
             atualizarTituloChat();
-            fetchChat();
+            carregarEExibirChat(canal);
         }
 
-        function addChatMsg(key, from, texto, timeStr) {
-            if (renderedChatKeys.has(key)) return; renderedChatKeys.add(key);
-            const box = document.getElementById('chat-lista');
-            const cor = chatCanalAtual === 'azul' ? 'text-blue-400' : 'text-yellow-400';
-            const row = document.createElement('div');
-            row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> <b class="${cor}">${from}:</b> <span class="text-gray-200">${texto}</span>`;
-            box.appendChild(row);
-            box.scrollTop = box.scrollHeight;
-        }
-
-        async function fetchChat() {
-            if (!chatCanalAtual) return;
-            atualizarEstadoChatUI();
-            try {
-                const res = await fetch(`${FIREBASE_BASE}/quiral_config/chat/${chatCanalAtual}.json?nocache=` + Date.now());
-                const data = await res.json();
-                if (!data) { if (renderedChatKeys.size > 0) { renderedChatKeys.clear(); document.getElementById('chat-lista').innerHTML = ''; } return; }
-                const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
-                entries.forEach(e => addChatMsg(e.key, e.from, e.m, e.t));
-            } catch (err) {}
+        // Roda em segundo plano (setInterval no boot), independente do modal
+        // estar aberto: detecta mensagens novas pra disparar a notificação e,
+        // se o canal em questão estiver sendo exibido no momento, também
+        // desenha a mensagem ao vivo na lista.
+        async function pollChat() {
+            for (const canal of canaisChatRelevantes()) {
+                if (chatCanalAtual === canal) atualizarEstadoChatUI();
+                try {
+                    const res = await fetch(`${FIREBASE_BASE}/quiral_config/chat/${canal}.json?nocache=` + Date.now());
+                    const data = await res.json();
+                    const vistos = renderedChatKeys[canal];
+                    if (!data) {
+                        if (vistos.size > 0) { vistos.clear(); if (chatCanalAtual === canal) document.getElementById('chat-lista').innerHTML = ''; }
+                        chatBootCarregado[canal] = true;
+                        continue;
+                    }
+                    const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                    let temNova = false;
+                    entries.forEach(e => {
+                        if (vistos.has(e.key)) return;
+                        vistos.add(e.key);
+                        if (chatBootCarregado[canal]) temNova = true;
+                        if (chatCanalAtual === canal && chatBootCarregado[canal]) addChatMsgDOM(e.from, e.m, e.t, e.cmd);
+                    });
+                    if (temNova) tocarNotificacao();
+                    chatBootCarregado[canal] = true;
+                } catch (err) {}
+            }
         }
 
         async function enviarChat() {
@@ -1350,7 +1442,7 @@
             try {
                 await fetch(`${FIREBASE_BASE}/quiral_config/chat/${session.team}/${chaveMsg}.json`, {
                     method: 'PUT',
-                    body: JSON.stringify({ from: session.label || session.user, m: texto, t: new Date().toLocaleTimeString('pt-BR'), ts: Date.now() })
+                    body: JSON.stringify({ from: session.label || session.user, m: texto, t: new Date().toLocaleTimeString('pt-BR'), ts: Date.now(), cmd: session.role === 'comandante' })
                 });
             } catch (err) { mostrarToast('Erro ao enviar mensagem.'); }
         }
@@ -1404,7 +1496,7 @@
                     fetch(LOGS_URL, { method: 'PUT', body: 'null' });
                     fetch(`${FIREBASE_BASE}/quiral_missoes.json`, { method: 'PUT', body: 'null' });
                     fetch(`${FIREBASE_BASE}/quiral_config/chat.json`, { method: 'PUT', body: 'null' }); // chat de equipe começa zerado a cada partida nova
-                    renderedChatKeys.clear(); const chatBox = document.getElementById('chat-lista'); if (chatBox) chatBox.innerHTML = '';
+                    zerarChatLocal();
                 }
 
                 document.getElementById('btn-missao').classList.toggle('hidden', !isAdmin || isConquista);
@@ -1469,9 +1561,10 @@
             applySessionUI(); document.getElementById('log-box').dataset.empty = '1';
             await carregarCentroCampo(); initLeafletMap();
             await fetchPositions(); await fetchNosAtivos(); await fetchOcultarPlacar(); fetchUplinkData(); await fetchCloudLogs(); logsBootCarregado = true; fetchMissoes();
-            if (session) { fetchComandos(); fetchMarcadores(); }
+            if (session) { fetchComandos(); fetchMarcadores(); pollChat(); }
             setInterval(fetchUplinkData, 2000); setInterval(fetchCloudLogs, 3000); setInterval(fetchPositions, 10000); setInterval(syncPlayersOnMap, 3000); setInterval(fetchMissoes, 5000); setInterval(fetchNosAtivos, 8000); setInterval(fetchOcultarPlacar, 6000);
             setInterval(() => { if(session) { fetchComandos(); fetchMarcadores(); } }, 4000);
+            setInterval(() => { if (session) pollChat(); }, 3000);
         }
         window.addEventListener('load', bootDashboard);
 

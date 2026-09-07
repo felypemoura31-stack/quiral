@@ -2,7 +2,8 @@ const CACHE_NAME = 'quiral-shell-v1';
 const SHELL_FILES = [
   './index.html',
   './manifest.json',
-  './icon.svg'
+  './icon.svg',
+  './notification.mp3'
 ];
 
 self.addEventListener('install', (event) => {
