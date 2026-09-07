@@ -134,6 +134,24 @@
         </div>
     </div>
 
+    <!-- MODAL: CHAT DE EQUIPE -->
+    <div id="chat-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[2500] hidden opacity-0 transition-opacity">
+        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full max-h-[85vh] flex flex-col">
+            <h3 id="chat-titulo" class="text-lg font-bold text-center mb-2">CHAT</h3>
+            <div id="chat-admin-tabs" class="hidden flex gap-2 justify-center mb-3">
+                <button onclick="trocarCanalChat('azul')" class="px-3 py-1 rounded text-xs font-bold border border-blue-600 text-blue-300 hover:bg-blue-950">AZUL</button>
+                <button onclick="trocarCanalChat('amarelo')" class="px-3 py-1 rounded text-xs font-bold border border-yellow-600 text-yellow-300 hover:bg-yellow-950">AMARELO</button>
+            </div>
+            <p id="chat-fechado-aviso" class="hidden text-[10px] text-red-400 mb-2 text-center font-bold">Chat disponível apenas durante a partida.</p>
+            <div id="chat-lista" class="flex-1 overflow-y-auto space-y-1 text-xs font-sans mb-3 min-h-[200px]"></div>
+            <div id="chat-input-row" class="hidden flex gap-2 mb-3">
+                <input type="text" id="chat-input" placeholder="Mensagem para a equipe..." autocomplete="off" maxlength="200" class="flex-1 min-w-0 bg-black border border-gray-600 rounded p-2 text-sm text-white focus:border-green-500 focus:outline-none" onkeydown="if(event.key==='Enter') enviarChat()">
+                <button onclick="enviarChat()" class="px-4 bg-green-800 hover:bg-green-700 text-white text-xs rounded border border-green-600 font-bold">➤</button>
+            </div>
+            <button onclick="closeChatModal()" class="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm border border-gray-600">Fechar</button>
+        </div>
+    </div>
+
     <!-- MODAL: HISTÓRICO -->
     <div id="historico-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[2500] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full max-h-[80vh] flex flex-col">
@@ -305,6 +323,7 @@
                     
                     <div class="flex gap-2 flex-wrap justify-end">
                         <button id="btn-marcador" onclick="handleMarcadorClick()" class="hidden bg-purple-950 hover:bg-purple-900 text-xs text-purple-300 px-3 py-1 rounded border border-purple-700 transition-colors">📍 MARCADOR</button>
+                        <button id="btn-chat" onclick="openChatModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">💬 CHAT</button>
                         <button id="btn-historico" onclick="openHistoricoModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">HISTÓRICO</button>
                         <button id="btn-exportar" onclick="exportarLog()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">EXPORTAR</button>
                         
@@ -803,8 +822,10 @@
                 await fetch(`${FIREBASE_BASE}/quiral_config/marcadores.json`, { method: 'PUT', body: 'null' }); 
                 await fetch(`${FIREBASE_BASE}/quiral_gps.json`, { method: 'PUT', body: 'null' }); 
                 await fetch(`${FIREBASE_BASE}/quiral_missoes.json`, { method: 'PUT', body: 'null' });
-                
+                await fetch(`${FIREBASE_BASE}/quiral_config/chat.json`, { method: 'PUT', body: 'null' });
+
                 document.getElementById('log-box').innerHTML = ''; document.getElementById('log-box').dataset.empty = '1'; renderedLogKeys.clear();
+                renderedChatKeys.clear(); document.getElementById('chat-lista').innerHTML = '';
                 marcadoresAtuais = {}; renderMarcadores(); comandosAtuais = {}; renderComandosOverlay(); 
                 pontosMissao = { azul: 0, amarelo: 0 }; missoesAtivas = {}; renderMissaoUI(); missoesProcessadas.clear();
                 mostrarToast('Jogo reiniciado com sucesso.');
@@ -1186,8 +1207,9 @@
             document.getElementById('btn-missao').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-ocultar-placar').classList.toggle('hidden', !isAdmin);
             
-            document.getElementById('btn-marcador').classList.toggle('hidden', !isCmd); 
+            document.getElementById('btn-marcador').classList.toggle('hidden', !isCmd);
             document.getElementById('btn-historico').classList.toggle('hidden', !(session && (session.team || isAdmin)));
+            document.getElementById('btn-chat').classList.toggle('hidden', !(session && (session.team || isAdmin)));
             
             const btnGps = document.getElementById('btn-gps'); const loginBtn = document.getElementById('btn-login'); const badge = document.getElementById('session-badge');
             if (session) {
@@ -1237,6 +1259,102 @@
                 const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0)); entries.forEach(entry => addLog(entry.key, entry.m, entry.t));
             } catch (err) {}
         }
+
+        // ==========================================
+        // CHAT DE EQUIPE - azul fala só com azul, amarelo só com amarelo, o
+        // admin lê os dois canais (sem enviar). Cada equipe é um nó separado
+        // no Firebase (quiral_config/chat/azul, quiral_config/chat/amarelo -
+        // aninhado dentro de quiral_config porque as regras de segurança do
+        // banco só liberam os nós já conhecidos, um nó novo na raiz tipo
+        // "quiral_chat" cai em "Permission denied"), mesmo padrão
+        // de fetchCloudLogs/addLog acima. Liberado/travado automaticamente
+        // junto do estado da partida (data.st) que já é monitorado em
+        // fetchUplinkData; o histórico é zerado a cada início de partida
+        // (mesmo PUT null que já limpa quiral_logs e quiral_missoes).
+        let chatCanalAtual = null;
+        let renderedChatKeys = new Set();
+        let chatPollInterval = null;
+
+        function atualizarTituloChat() {
+            const titulo = document.getElementById('chat-titulo');
+            const cor = chatCanalAtual === 'azul' ? 'text-blue-400' : 'text-yellow-400';
+            titulo.className = 'text-lg font-bold text-center mb-2 ' + cor;
+            titulo.textContent = 'CHAT - EQUIPE ' + chatCanalAtual.toUpperCase();
+        }
+
+        function atualizarEstadoChatUI() {
+            const partidaRodando = !!(lastFullData && lastFullData.st === 'ON');
+            const podeEscrever = !isAdmin && partidaRodando;
+            document.getElementById('chat-input-row').classList.toggle('hidden', !podeEscrever);
+            document.getElementById('chat-fechado-aviso').classList.toggle('hidden', isAdmin || partidaRodando);
+        }
+
+        function openChatModal() {
+            if (!session || !(session.team || isAdmin)) return;
+            chatCanalAtual = isAdmin ? 'azul' : session.team;
+            renderedChatKeys.clear();
+            document.getElementById('chat-lista').innerHTML = '';
+            document.getElementById('chat-admin-tabs').classList.toggle('hidden', !isAdmin);
+            atualizarTituloChat();
+            atualizarEstadoChatUI();
+            const box = document.getElementById('chat-modal');
+            box.classList.remove('hidden');
+            requestAnimationFrame(() => box.classList.remove('opacity-0'));
+            fetchChat();
+            if (chatPollInterval) clearInterval(chatPollInterval);
+            chatPollInterval = setInterval(fetchChat, 2500);
+        }
+        function closeChatModal() {
+            const box = document.getElementById('chat-modal');
+            box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200);
+            if (chatPollInterval) { clearInterval(chatPollInterval); chatPollInterval = null; }
+        }
+        function trocarCanalChat(canal) {
+            if (!isAdmin || chatCanalAtual === canal) return;
+            chatCanalAtual = canal; renderedChatKeys.clear();
+            document.getElementById('chat-lista').innerHTML = '';
+            atualizarTituloChat();
+            fetchChat();
+        }
+
+        function addChatMsg(key, from, texto, timeStr) {
+            if (renderedChatKeys.has(key)) return; renderedChatKeys.add(key);
+            const box = document.getElementById('chat-lista');
+            const cor = chatCanalAtual === 'azul' ? 'text-blue-400' : 'text-yellow-400';
+            const row = document.createElement('div');
+            row.innerHTML = `<span class="text-gray-600">[${timeStr}]</span> <b class="${cor}">${from}:</b> <span class="text-gray-200">${texto}</span>`;
+            box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        async function fetchChat() {
+            if (!chatCanalAtual) return;
+            atualizarEstadoChatUI();
+            try {
+                const res = await fetch(`${FIREBASE_BASE}/quiral_config/chat/${chatCanalAtual}.json?nocache=` + Date.now());
+                const data = await res.json();
+                if (!data) { if (renderedChatKeys.size > 0) { renderedChatKeys.clear(); document.getElementById('chat-lista').innerHTML = ''; } return; }
+                const entries = Object.entries(data).map(([key, v]) => ({ key, ...v })).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                entries.forEach(e => addChatMsg(e.key, e.from, e.m, e.t));
+            } catch (err) {}
+        }
+
+        async function enviarChat() {
+            if (isAdmin || !session || !session.team) return;
+            if (!lastFullData || lastFullData.st !== 'ON') { mostrarToast('O chat só funciona durante a partida.'); return; }
+            const input = document.getElementById('chat-input');
+            const texto = input.value.trim();
+            if (!texto) return;
+            input.value = '';
+            const chaveMsg = 'm_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+            try {
+                await fetch(`${FIREBASE_BASE}/quiral_config/chat/${session.team}/${chaveMsg}.json`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ from: session.label || session.user, m: texto, t: new Date().toLocaleTimeString('pt-BR'), ts: Date.now() })
+                });
+            } catch (err) { mostrarToast('Erro ao enviar mensagem.'); }
+        }
+
         async function exportarLog() {
             try {
                 const res = await fetch(LOGS_URL + '?nocache=' + Date.now()); const data = (await res.json()) || {}; const entradas = Object.values(data).sort((a, b) => (a.ts || 0) - (b.ts || 0));
@@ -1283,8 +1401,10 @@
                     // agora participa da limpeza - é seguro repetir a mesma limpeza
                     // várias vezes (idempotente), então não tem problema em vários
                     // navegadores abertos tentarem ao mesmo tempo.
-                    fetch(LOGS_URL, { method: 'PUT', body: 'null' }); 
+                    fetch(LOGS_URL, { method: 'PUT', body: 'null' });
                     fetch(`${FIREBASE_BASE}/quiral_missoes.json`, { method: 'PUT', body: 'null' });
+                    fetch(`${FIREBASE_BASE}/quiral_config/chat.json`, { method: 'PUT', body: 'null' }); // chat de equipe começa zerado a cada partida nova
+                    renderedChatKeys.clear(); const chatBox = document.getElementById('chat-lista'); if (chatBox) chatBox.innerHTML = '';
                 }
 
                 document.getElementById('btn-missao').classList.toggle('hidden', !isAdmin || isConquista);
