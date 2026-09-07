@@ -67,13 +67,46 @@
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
             <h3 class="text-xl text-green-500 mb-4 font-bold text-center">ACESSO TÁTICO</h3>
             <label class="block text-xs text-gray-400 mb-1">Cargo / Permissão:</label>
-            <select id="login-role" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-green-500 focus:outline-none" onchange="toggleCodinomeField()">
-                <option value="jogador_azul">Jogador - Equipe AZUL</option>
-                <option value="comandante_azul">Comandante - Equipe AZUL</option>
-                <option value="jogador_amarelo">Jogador - Equipe AMARELO</option>
-                <option value="comandante_amarelo">Comandante - Equipe AMARELO</option>
-                <option value="admin">Administrador (Central)</option>
-            </select>
+            <div class="relative mb-3">
+                <button type="button" id="login-role-trigger" onclick="toggleRoleDropdown()" class="w-full flex items-center gap-2 bg-black border border-gray-600 rounded p-2 text-white focus:border-green-500 focus:outline-none">
+                    <span id="login-role-label" class="flex items-center gap-2 flex-1"></span>
+                    <span class="text-gray-500 text-xs">▾</span>
+                </button>
+                <div id="login-role-options" class="hidden absolute z-10 mt-1 w-full bg-black border border-gray-600 rounded overflow-hidden shadow-2xl">
+                    <div class="role-option flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-blue-950 border-l-4 border-blue-500" onclick="selecionarRole('jogador_azul')">
+                        <span class="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span>
+                        <span class="text-blue-300 flex-1">Jogador</span>
+                        <span class="text-[10px] font-bold text-blue-400 border border-blue-700 rounded px-1.5 py-0.5">AZUL</span>
+                    </div>
+                    <div class="role-option flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-blue-950 border-l-4 border-blue-500 bg-blue-950/30" onclick="selecionarRole('comandante_azul')">
+                        <span class="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0"></span>
+                        <span class="text-blue-200 font-bold flex-1">★ Comandante</span>
+                        <span class="text-[10px] font-bold text-blue-300 border border-blue-600 rounded px-1.5 py-0.5">AZUL</span>
+                    </div>
+                    <div class="role-option flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-yellow-950 border-l-4 border-yellow-400" onclick="selecionarRole('jogador_amarelo')">
+                        <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 shrink-0"></span>
+                        <span class="text-yellow-300 flex-1">Jogador</span>
+                        <span class="text-[10px] font-bold text-yellow-400 border border-yellow-700 rounded px-1.5 py-0.5">AMARELO</span>
+                    </div>
+                    <div class="role-option flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-yellow-950 border-l-4 border-yellow-400 bg-yellow-950/20" onclick="selecionarRole('comandante_amarelo')">
+                        <span class="w-2.5 h-2.5 rounded-full bg-yellow-300 shrink-0"></span>
+                        <span class="text-yellow-200 font-bold flex-1">★ Comandante</span>
+                        <span class="text-[10px] font-bold text-yellow-300 border border-yellow-600 rounded px-1.5 py-0.5">AMARELO</span>
+                    </div>
+                    <div class="role-option flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-green-950 border-l-4 border-green-500 border-t border-t-gray-700" onclick="selecionarRole('admin')">
+                        <span class="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0"></span>
+                        <span class="text-green-400 font-bold flex-1">🛡 Administrador</span>
+                        <span class="text-[10px] font-bold text-green-400 border border-green-700 rounded px-1.5 py-0.5">CENTRAL</span>
+                    </div>
+                </div>
+                <select id="login-role" class="hidden">
+                    <option value="jogador_azul">Jogador - Equipe AZUL</option>
+                    <option value="comandante_azul">Comandante - Equipe AZUL</option>
+                    <option value="jogador_amarelo">Jogador - Equipe AMARELO</option>
+                    <option value="comandante_amarelo">Comandante - Equipe AMARELO</option>
+                    <option value="admin">Administrador (Central)</option>
+                </select>
+            </div>
             <div id="div-codinome">
                 <label class="block text-xs text-gray-400 mb-1">Codinome / Callsign:</label>
                 <input type="text" id="login-callsign" placeholder="Ex: Falcão, Alfa-1..." autocomplete="off" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-white focus:border-green-500 focus:outline-none">
@@ -1067,8 +1100,39 @@
         }
 
         function toggleCodinomeField() { const role = document.getElementById('login-role').value; const divCodinome = document.getElementById('div-codinome'); if (role === 'admin') divCodinome.classList.add('hidden'); else divCodinome.classList.remove('hidden'); }
-        function openLoginModal() { if (session) { logout(); return; } document.getElementById('login-callsign').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden'); toggleCodinomeField(); const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); }
-        function closeLoginModal() { const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
+
+        // Dropdown customizado do cargo/permissão no login: o <select> real
+        // fica escondido e continua sendo a fonte da verdade (autenticar() e
+        // toggleCodinomeField() leem o .value dele normalmente) - isso aqui só
+        // desenha uma versão colorida por equipe (azul/amarelo) e destaca
+        // Comandante vs Jogador, sem mudar a lógica de login.
+        const ROLE_INFO = {
+            jogador_azul:       { label: 'Jogador',        dot: 'bg-blue-500',   text: 'text-blue-300',        badge: 'AZUL',    badgeCls: 'text-blue-400 border-blue-700' },
+            comandante_azul:    { label: '★ Comandante',   dot: 'bg-blue-400',   text: 'text-blue-200 font-bold', badge: 'AZUL',    badgeCls: 'text-blue-300 border-blue-600' },
+            jogador_amarelo:    { label: 'Jogador',        dot: 'bg-yellow-400', text: 'text-yellow-300',      badge: 'AMARELO', badgeCls: 'text-yellow-400 border-yellow-700' },
+            comandante_amarelo: { label: '★ Comandante',   dot: 'bg-yellow-300', text: 'text-yellow-200 font-bold', badge: 'AMARELO', badgeCls: 'text-yellow-300 border-yellow-600' },
+            admin:              { label: '🛡 Administrador', dot: 'bg-green-500', text: 'text-green-400 font-bold', badge: 'CENTRAL', badgeCls: 'text-green-400 border-green-700' }
+        };
+        function atualizarTriggerRole() {
+            const info = ROLE_INFO[document.getElementById('login-role').value];
+            document.getElementById('login-role-label').innerHTML = `<span class="w-2.5 h-2.5 rounded-full ${info.dot} shrink-0"></span><span class="${info.text}">${info.label}</span><span class="text-[10px] font-bold ${info.badgeCls} border rounded px-1.5 py-0.5 ml-auto">${info.badge}</span>`;
+        }
+        function toggleRoleDropdown() { document.getElementById('login-role-options').classList.toggle('hidden'); }
+        function fecharRoleDropdown() { document.getElementById('login-role-options').classList.add('hidden'); }
+        function selecionarRole(valor) {
+            document.getElementById('login-role').value = valor;
+            atualizarTriggerRole();
+            fecharRoleDropdown();
+            toggleCodinomeField();
+        }
+        document.addEventListener('click', function(e) {
+            const trigger = document.getElementById('login-role-trigger'); const options = document.getElementById('login-role-options');
+            if (!options || options.classList.contains('hidden')) return;
+            if (!trigger.contains(e.target) && !options.contains(e.target)) fecharRoleDropdown();
+        });
+
+        function openLoginModal() { if (session) { logout(); return; } document.getElementById('login-callsign').value = ''; document.getElementById('login-pass').value = ''; document.getElementById('login-erro').classList.add('hidden'); document.getElementById('login-role').value = 'jogador_azul'; atualizarTriggerRole(); toggleCodinomeField(); const box = document.getElementById('login-modal'); box.classList.remove('hidden'); requestAnimationFrame(() => box.classList.remove('opacity-0')); }
+        function closeLoginModal() { const box = document.getElementById('login-modal'); box.classList.add('opacity-0'); fecharRoleDropdown(); setTimeout(() => box.classList.add('hidden'), 200); }
         function logout() { session = null; sessionStorage.removeItem('quiral_session'); if (isGpsActive) toggleGPS(); applySessionUI(); applyBlindModeUI(); }
 
         async function sha256(texto) { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto)); return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
