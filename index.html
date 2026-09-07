@@ -1107,11 +1107,11 @@
         // desenha uma versão colorida por equipe (azul/amarelo) e destaca
         // Comandante vs Jogador, sem mudar a lógica de login.
         const ROLE_INFO = {
-            jogador_azul:       { label: 'Jogador',        dot: 'bg-blue-500',   text: 'text-blue-300',        badge: 'AZUL',    badgeCls: 'text-blue-400 border-blue-700', borderL: 'border-blue-500' },
-            comandante_azul:    { label: '★ Comandante',   dot: 'bg-blue-400',   text: 'text-blue-200 font-bold', badge: 'AZUL',    badgeCls: 'text-blue-300 border-blue-600', borderL: 'border-blue-400' },
-            jogador_amarelo:    { label: 'Jogador',        dot: 'bg-yellow-400', text: 'text-yellow-300',      badge: 'AMARELO', badgeCls: 'text-yellow-400 border-yellow-700', borderL: 'border-yellow-400' },
-            comandante_amarelo: { label: '★ Comandante',   dot: 'bg-yellow-300', text: 'text-yellow-200 font-bold', badge: 'AMARELO', badgeCls: 'text-yellow-300 border-yellow-600', borderL: 'border-yellow-300' },
-            admin:              { label: '🛡 Administrador', dot: 'bg-green-500', text: 'text-green-400 font-bold', badge: 'CENTRAL', badgeCls: 'text-green-400 border-green-700', borderL: 'border-green-500' }
+            jogador_azul:       { label: 'Jogador',        dot: 'bg-blue-500',   text: 'text-blue-300',        badge: 'AZUL',    badgeCls: 'text-blue-400 border-blue-700', borderL: 'border-l-blue-500' },
+            comandante_azul:    { label: '★ Comandante',   dot: 'bg-blue-400',   text: 'text-blue-200 font-bold', badge: 'AZUL',    badgeCls: 'text-blue-300 border-blue-600', borderL: 'border-l-blue-400' },
+            jogador_amarelo:    { label: 'Jogador',        dot: 'bg-yellow-400', text: 'text-yellow-300',      badge: 'AMARELO', badgeCls: 'text-yellow-400 border-yellow-700', borderL: 'border-l-yellow-400' },
+            comandante_amarelo: { label: '★ Comandante',   dot: 'bg-yellow-300', text: 'text-yellow-200 font-bold', badge: 'AMARELO', badgeCls: 'text-yellow-300 border-yellow-600', borderL: 'border-l-yellow-300' },
+            admin:              { label: '🛡 Administrador', dot: 'bg-green-500', text: 'text-green-400 font-bold', badge: 'CENTRAL', badgeCls: 'text-green-400 border-green-700', borderL: 'border-l-green-500' }
         };
         function atualizarTriggerRole() {
             const info = ROLE_INFO[document.getElementById('login-role').value];
