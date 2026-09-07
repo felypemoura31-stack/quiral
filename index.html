@@ -1107,11 +1107,11 @@
         // desenha uma versão colorida por equipe (azul/amarelo) e destaca
         // Comandante vs Jogador, sem mudar a lógica de login.
         const ROLE_INFO = {
-            jogador_azul:       { label: 'Jogador',        dot: 'bg-blue-500',   text: 'text-blue-300',        badge: 'AZUL',    badgeCls: 'text-blue-400 border-blue-700' },
-            comandante_azul:    { label: '★ Comandante',   dot: 'bg-blue-400',   text: 'text-blue-200 font-bold', badge: 'AZUL',    badgeCls: 'text-blue-300 border-blue-600' },
-            jogador_amarelo:    { label: 'Jogador',        dot: 'bg-yellow-400', text: 'text-yellow-300',      badge: 'AMARELO', badgeCls: 'text-yellow-400 border-yellow-700' },
-            comandante_amarelo: { label: '★ Comandante',   dot: 'bg-yellow-300', text: 'text-yellow-200 font-bold', badge: 'AMARELO', badgeCls: 'text-yellow-300 border-yellow-600' },
-            admin:              { label: '🛡 Administrador', dot: 'bg-green-500', text: 'text-green-400 font-bold', badge: 'CENTRAL', badgeCls: 'text-green-400 border-green-700' }
+            jogador_azul:       { label: 'Jogador',        dot: 'bg-blue-500',   text: 'text-blue-300',        badge: 'AZUL',    badgeCls: 'text-blue-400 border-blue-700', borderL: 'border-blue-500' },
+            comandante_azul:    { label: '★ Comandante',   dot: 'bg-blue-400',   text: 'text-blue-200 font-bold', badge: 'AZUL',    badgeCls: 'text-blue-300 border-blue-600', borderL: 'border-blue-400' },
+            jogador_amarelo:    { label: 'Jogador',        dot: 'bg-yellow-400', text: 'text-yellow-300',      badge: 'AMARELO', badgeCls: 'text-yellow-400 border-yellow-700', borderL: 'border-yellow-400' },
+            comandante_amarelo: { label: '★ Comandante',   dot: 'bg-yellow-300', text: 'text-yellow-200 font-bold', badge: 'AMARELO', badgeCls: 'text-yellow-300 border-yellow-600', borderL: 'border-yellow-300' },
+            admin:              { label: '🛡 Administrador', dot: 'bg-green-500', text: 'text-green-400 font-bold', badge: 'CENTRAL', badgeCls: 'text-green-400 border-green-700', borderL: 'border-green-500' }
         };
         function atualizarTriggerRole() {
             const info = ROLE_INFO[document.getElementById('login-role').value];
@@ -1190,7 +1190,8 @@
             let contas = {}; try { const res = await fetch(AUTH_URL + '?nocache=' + Date.now()); contas = (await res.json()) || {}; } catch (err) {}
             container.innerHTML = '';
             ROLE_KEYS.forEach(key => {
-                container.innerHTML += `<div class="border border-gray-700 rounded p-3"><p class="text-xs text-gray-400 font-bold mb-2">${ROLE_LABELS[key]}</p><input type="password" id="conta-pass-${key}" placeholder="Nova senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white focus:border-green-500"><button onclick="salvarConta('${key}')" class="w-full bg-green-800 hover:bg-green-700 text-white text-xs py-2 rounded border border-green-600">SALVAR SENHA</button><p id="conta-msg-${key}" class="text-[10px] mt-1 hidden"></p></div>`;
+                const info = ROLE_INFO[key];
+                container.innerHTML += `<div class="border border-gray-700 rounded p-3 border-l-4 ${info.borderL}"><p class="text-xs font-bold mb-2 flex items-center gap-2"><span class="w-2 h-2 rounded-full ${info.dot} shrink-0"></span><span class="${info.text}">${info.label}</span><span class="text-[10px] font-bold ${info.badgeCls} border rounded px-1.5 py-0.5 ml-auto">${info.badge}</span></p><input type="password" id="conta-pass-${key}" placeholder="Nova senha" class="w-full bg-black border border-gray-600 rounded p-2 mb-2 text-sm text-white focus:border-green-500"><button onclick="salvarConta('${key}')" class="w-full bg-green-800 hover:bg-green-700 text-white text-xs py-2 rounded border border-green-600">SALVAR SENHA</button><p id="conta-msg-${key}" class="text-[10px] mt-1 hidden"></p></div>`;
             });
         }
         function closeContasModal() { const box = document.getElementById('contas-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
