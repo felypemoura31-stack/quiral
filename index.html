@@ -501,9 +501,7 @@
                 let isTooFar = latValid && (Math.abs(pos.lat - CENTRO_MAPA[0]) > 0.5); 
                 
                 if (!pos || !latValid || isTooFar) {
-                    const offsetLat = (Math.random() - 0.5) * 0.0015;
-                    const offsetLng = (Math.random() - 0.5) * 0.0015;
-                    pos = { lat: CENTRO_MAPA[0] + offsetLat, lng: CENTRO_MAPA[1] + offsetLng };
+                    pos = calcularPosicaoGrade(id, CENTRO_MAPA);
                     nodePositions[id] = pos;
                 }
 
@@ -892,17 +890,33 @@
             mostrarToast("Alteração de campo cancelada.");
         }
 
+        // Posição em grade (5 colunas por linha, quebra pra próxima linha depois
+        // disso) em volta de um centro - usada pra reorganizar os nós de forma
+        // previsível a cada troca de campo, em vez de espalhar aleatoriamente
+        // (o admin ainda pode arrastar cada um pra posição exata depois).
+        function calcularPosicaoGrade(id, centro) {
+            const COLUNAS = 5;
+            const ESPACO = 0.0004; // ~separação entre nós vizinhos no mapa
+            const idx = id - 1;
+            const col = idx % COLUNAS;
+            const row = Math.floor(idx / COLUNAS);
+            return {
+                lat: centro[0] - row * ESPACO,
+                lng: centro[1] + (col - (COLUNAS - 1) / 2) * ESPACO
+            };
+        }
+
         async function salvarNovoCentro() {
             if (!map) return;
             const center = map.getCenter();
             CENTRO_MAPA = [center.lat, center.lng];
             Object.keys(nodePositions).forEach(id => {
-                nodePositions[id] = { lat: center.lat + (Math.random() - 0.5) * 0.0015, lng: center.lng + (Math.random() - 0.5) * 0.0015 };
+                nodePositions[id] = calcularPosicaoGrade(parseInt(id), CENTRO_MAPA);
             });
             try {
                 await fetch(`${FIREBASE_BASE}/quiral_config/centro.json`, { method: 'PUT', body: JSON.stringify({lat: center.lat, lng: center.lng}) });
-                await salvarLayout(); 
-                mostrarToast("📍 Novo Campo travado! Redistribua as bases.");
+                await salvarLayout();
+                mostrarToast("📍 Novo Campo travado! Nós reorganizados em grade.");
             } catch(e) { mostrarToast("Erro ao comunicar com a Base de Dados."); }
         }
 
