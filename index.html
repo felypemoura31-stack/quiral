@@ -395,6 +395,7 @@
         const LOGS_URL = FIREBASE_BASE + "/quiral_logs.json";
         
         let CENTRO_MAPA = [-17.763466, -48.649717];
+        let ZOOM_MAPA = 18;
         
         let session = null;
         try { session = JSON.parse(sessionStorage.getItem('quiral_session')); } catch (err) {}
@@ -450,6 +451,7 @@
                 const res = await fetch(`${FIREBASE_BASE}/quiral_config/centro.json?nocache=${Date.now()}`);
                 const data = await res.json();
                 if (data && typeof data.lat === 'number' && typeof data.lng === 'number') { CENTRO_MAPA = [data.lat, data.lng]; }
+                if (data && typeof data.zoom === 'number') { ZOOM_MAPA = data.zoom; }
             } catch(e) {}
         }
 
@@ -457,7 +459,7 @@
             if (map) return;
             try {
                 document.getElementById('map-placeholder').classList.add('hidden');
-                map = L.map('leaflet-map', { zoomControl: false, tap: false }).setView(CENTRO_MAPA, 18);
+                map = L.map('leaflet-map', { zoomControl: false, tap: false }).setView(CENTRO_MAPA, ZOOM_MAPA);
                 L.control.zoom({ position: 'topright' }).addTo(map);
 
                 const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { 
@@ -886,7 +888,7 @@
         // olhando pra um lugar que ele decidiu não usar.
         function cancelarCentro() {
             modoMira = null; atualizarUIMira();
-            if (map) map.setView(CENTRO_MAPA, 18);
+            if (map) map.setView(CENTRO_MAPA, ZOOM_MAPA);
             mostrarToast("Alteração de campo cancelada.");
         }
 
@@ -909,12 +911,14 @@
         async function salvarNovoCentro() {
             if (!map) return;
             const center = map.getCenter();
+            const zoomAtual = map.getZoom();
             CENTRO_MAPA = [center.lat, center.lng];
+            ZOOM_MAPA = zoomAtual;
             Object.keys(nodePositions).forEach(id => {
                 nodePositions[id] = calcularPosicaoGrade(parseInt(id), CENTRO_MAPA);
             });
             try {
-                await fetch(`${FIREBASE_BASE}/quiral_config/centro.json`, { method: 'PUT', body: JSON.stringify({lat: center.lat, lng: center.lng}) });
+                await fetch(`${FIREBASE_BASE}/quiral_config/centro.json`, { method: 'PUT', body: JSON.stringify({lat: center.lat, lng: center.lng, zoom: zoomAtual}) });
                 await salvarLayout();
                 mostrarToast("📍 Novo Campo travado! Nós reorganizados em grade.");
             } catch(e) { mostrarToast("Erro ao comunicar com a Base de Dados."); }
