@@ -152,20 +152,6 @@
         </div>
     </div>
 
-    <!-- MODAL: IMPORTAR LOG DO SD -->
-    <div id="importar-log-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[2500] hidden opacity-0 transition-opacity">
-        <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full">
-            <h3 class="text-lg text-gray-200 mb-2 font-bold text-center">IMPORTAR LOG DO SD</h3>
-            <p class="text-xs text-gray-400 mb-3 text-center">Selecione o arquivo <code>log_partida_N.txt</code> do cartão SD da central. As linhas são adicionadas ao Registro de Combate e ao Exportar, sem apagar o que já está lá.</p>
-            <input type="file" id="importar-log-input" accept=".txt" class="w-full bg-black border border-gray-600 rounded p-2 mb-3 text-xs text-white">
-            <p id="importar-log-status" class="text-xs mb-3 hidden"></p>
-            <div class="flex justify-between gap-2">
-                <button onclick="closeImportarLogModal()" class="w-1/2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded font-bold border border-gray-600">CANCELAR</button>
-                <button onclick="importarLogSD()" class="w-1/2 px-4 py-2 bg-green-900 hover:bg-green-800 text-white rounded font-bold border border-green-600">IMPORTAR</button>
-            </div>
-        </div>
-    </div>
-
     <!-- MODAL: HISTÓRICO -->
     <div id="historico-modal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[2500] hidden opacity-0 transition-opacity">
         <div class="bg-gray-900 border border-gray-700 p-6 rounded-lg shadow-2xl max-w-sm mx-4 w-full max-h-[80vh] flex flex-col">
@@ -340,7 +326,6 @@
                         <button id="btn-chat" onclick="openChatModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">💬 CHAT</button>
                         <button id="btn-historico" onclick="openHistoricoModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">HISTÓRICO</button>
                         <button id="btn-exportar" onclick="exportarLog()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">EXPORTAR</button>
-                        <button id="btn-importar-log" onclick="abrirImportarLogModal()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-white px-3 py-1 rounded border border-gray-600 transition-colors">IMPORTAR LOG SD</button>
                         
                         <button id="btn-missao" onclick="abrirMissaoModal()" class="hidden bg-purple-800 hover:bg-purple-700 text-xs text-white px-3 py-1 rounded border border-purple-500 transition-colors shadow-[0_0_8px_rgba(168,85,247,0.4)]">🎯 MISSÃO</button>
                         <button id="btn-ocultar-placar" onclick="toggleOcultarPlacar()" class="hidden bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 px-3 py-1 rounded border border-gray-600 transition-colors">👁️ OCULTAR PLACAR</button>
@@ -1253,7 +1238,6 @@
             document.getElementById('btn-contas').classList.toggle('hidden', !isAdmin); 
             document.getElementById('btn-reset-logs').classList.toggle('hidden', !isAdmin); 
             document.getElementById('btn-exportar').classList.toggle('hidden', !isAdmin);
-            document.getElementById('btn-importar-log').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-centro-campo').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-buscar-local').classList.toggle('hidden', !isAdmin);
             document.getElementById('btn-config-nos').classList.toggle('hidden', !isAdmin);
@@ -1483,70 +1467,6 @@
                 const linhas = entradas.map(e => `[${e.t}] ${(e.m || '').replace(/<[^>]+>/g, '')}`); const texto = linhas.length ? linhas.join('\n') : 'Sem registros nesta partida.';
                 const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `registro-combate-${new Date().toISOString().slice(0, 16).replace(':', '-')}.txt`; document.body.appendChild(a); a.click(); a.remove();
             } catch (err) { mostrarToast('Falha ao exportar registro.'); }
-        }
-
-        function abrirImportarLogModal() {
-            if (!isAdmin) return;
-            document.getElementById('importar-log-input').value = '';
-            const statusEl = document.getElementById('importar-log-status'); statusEl.classList.add('hidden');
-            const box = document.getElementById('importar-log-modal');
-            box.classList.remove('hidden');
-            requestAnimationFrame(() => box.classList.remove('opacity-0'));
-        }
-        function closeImportarLogModal() { const box = document.getElementById('importar-log-modal'); box.classList.add('opacity-0'); setTimeout(() => box.classList.add('hidden'), 200); }
-
-        // Lê um arquivo de log do cartão SD (mesmo formato que registrarLog() grava
-        // na central) e soma essas linhas ao quiral_logs do Firebase via PATCH - o
-        // mesmo nó que já alimenta tanto o Registro de Combate quanto o Exportar,
-        // então essas linhas aparecem nos dois automaticamente, sem apagar o que já
-        // estava lá. Útil quando a central perde energia no meio do jogo: o cartão
-        // SD tem o histórico completo (grava e fecha o arquivo a cada linha), mas o
-        // Firebase só tem o que conseguiu ser enviado antes da queda.
-        async function importarLogSD() {
-            if (!isAdmin) return;
-            const input = document.getElementById('importar-log-input');
-            const statusEl = document.getElementById('importar-log-status');
-            statusEl.classList.remove('hidden');
-            if (!input.files || input.files.length === 0) {
-                statusEl.textContent = 'Selecione um arquivo primeiro.'; statusEl.className = 'text-xs mb-3 text-red-400';
-                return;
-            }
-            statusEl.textContent = 'Lendo arquivo...'; statusEl.className = 'text-xs mb-3 text-gray-400';
-            try {
-                const texto = await input.files[0].text();
-                const linhas = texto.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                if (linhas.length === 0) { statusEl.textContent = 'Arquivo vazio.'; statusEl.className = 'text-xs mb-3 text-red-400'; return; }
-
-                const regexData = /^\[(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})\]\s*(.*)$/;
-                const regexElapsed = /^\[(\d{2}):(\d{2})\]\s*(.*)$/;
-                const baseTs = Date.now();
-                const entradas = {};
-
-                linhas.forEach((linha, idx) => {
-                    let t, m, ts;
-                    const md = linha.match(regexData);
-                    const me = !md ? linha.match(regexElapsed) : null;
-                    if (md) {
-                        const [, dia, mes, ano, h, min, s, resto] = md;
-                        t = `${h}:${min}:${s}`; m = resto;
-                        ts = new Date(+ano, +mes - 1, +dia, +h, +min, +s).getTime();
-                    } else if (me) {
-                        const [, h, min, resto] = me;
-                        t = `${h}:${min}`; m = resto;
-                        ts = baseTs + idx; // sem data absoluta no arquivo - só preserva a ordem entre as linhas
-                    } else {
-                        t = ''; m = linha; ts = baseTs + idx;
-                    }
-                    entradas['sd_' + baseTs + '_' + idx] = { t, m, ts };
-                });
-
-                await fetch(LOGS_URL, { method: 'PATCH', body: JSON.stringify(entradas) });
-                statusEl.textContent = linhas.length + ' linha(s) importada(s) com sucesso!'; statusEl.className = 'text-xs mb-3 text-green-400';
-                fetchCloudLogs();
-                mostrarToast('📥 ' + linhas.length + ' linha(s) do log SD importadas!');
-            } catch (err) {
-                statusEl.textContent = 'Erro ao importar o arquivo.'; statusEl.className = 'text-xs mb-3 text-red-400';
-            }
         }
 
         function updateStatusBadge(type, playing) {
