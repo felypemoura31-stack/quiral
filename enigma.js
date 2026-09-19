@@ -166,8 +166,64 @@
     'algo respirou no canal.',
     'quem está digitando além de você?',
     'a estática está falando.',
-    '...eles ouvem o teclado...'
+    '...eles ouvem o teclado...',
+    'a tela piscou. não foi a tela.',
+    'existe alguém na outra ponta da linha.',
+    'ele aprendeu o seu nome pelo som das teclas.',
+    'ALERTA: BATIMENTO CARDÍACO DETECTADO NO CANAL',
+    'a nave não caiu. ela foi deixada aqui.',
+    'as luzes do campo apagaram por um instante.',
+    '...não responda quando ele chamar...',
+    'algo raspa por baixo da estática.',
+    'você já contou quantos são vocês?',
+    'ERRO 0x666: PRESENÇA NÃO CATALOGADA',
+    'o silêncio no rádio não é vazio.',
+    'ele está mais perto do que o mapa mostra.',
+    'não use lanterna. ele enxerga a luz.',
+    '...alguém acabou de sussurrar atrás de você...',
+    'a mata está quieta demais.',
+    'SINAL DUPLICADO: ORIGEM DESCONHECIDA',
+    'ele copia vozes. cuidado com quem chama pelo rádio.',
+    'os passos no canal não são os seus.',
+    'cada tentativa errada o acorda um pouco mais.',
+    'a criatura não dorme. só espera.',
+    'há algo respirando dentro da nave.',
+    'não confie no companheiro que ficou calado.',
+    'a temperatura caiu 12 graus no setor leste.',
+    'SENSOR DE MOVIMENTO: 1 ALVO NÃO IDENTIFICADO',
+    '...ele está rindo...',
+    'os galhos se mexem sem vento.',
+    'não fique sozinho. nunca fique sozinho.',
+    'a estática formou uma palavra. era o seu nome.',
+    'ele deixou marcas no chão. estavam frescas.',
+    'CANAL COMPROMETIDO. ALGO ESTÁ LENDO ISTO.',
+    'o eco respondeu antes da pergunta.',
+    'não pisque por muito tempo.',
+    'as sombras do campo estão em posições diferentes.',
+    'alguém tocou no seu ombro? não olhe.',
+    'ele sabe onde vocês vão. sempre soube.',
+    'a última equipe que decifrou isto não voltou.',
+    'FALHA NO SENSOR TÉRMICO: ALGO FRIO DEMAIS',
+    'você ouviu isso? eu também.',
+    'as luzes dos nós estão piscando em código.'
   ];
+  // Sorteio sem repetição: embaralha todas as frases e só reembaralha depois
+  // de mostrar cada uma (sem repetir a última na virada). A "sacola" fica fora
+  // do overlay para não reiniciar quando o jogador fecha e reabre.
+  let sacolaSussurros = [];
+  let ultimoSussurro = null;
+  function proximoSussurro() {
+    if (!sacolaSussurros.length) {
+      sacolaSussurros = SUSSURROS.slice();
+      for (let i = sacolaSussurros.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [sacolaSussurros[i], sacolaSussurros[j]] = [sacolaSussurros[j], sacolaSussurros[i]];
+      }
+      if (sacolaSussurros[sacolaSussurros.length - 1] === ultimoSussurro) sacolaSussurros.unshift(sacolaSussurros.pop());
+    }
+    ultimoSussurro = sacolaSussurros.pop();
+    return ultimoSussurro;
+  }
   const NEGADOS = [
     'CHAVE INVÁLIDA.',
     'ACESSO NEGADO.',
@@ -284,7 +340,7 @@
     if (reduceMotion) return;
     timerSussurro = setTimeout(() => {
       if (el.overlay.hidden || el.term.hidden) return;
-      dizer(sortear(SUSSURROS), 'en-whisper', true);
+      dizer(proximoSussurro(), 'en-whisper', true);
       agendarSussurro();
     }, 14000 + Math.random() * 14000);
   }
