@@ -12,6 +12,7 @@
   const LS_PLAYER = 'quiral_enigma_v1';
   const LS_ADMIN = 'quiral_enigma_admin_v1';
   const MARCA_PORTAO = 'QUIRAL';
+  const INTERVALO_SUSSURRO_MS = 10 * 60 * 1000; // uma frase de terror a cada 10 minutos
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ---------- cripto ---------- */
@@ -205,7 +206,46 @@
     'a última equipe que decifrou isto não voltou.',
     'FALHA NO SENSOR TÉRMICO: ALGO FRIO DEMAIS',
     'você ouviu isso? eu também.',
-    'as luzes dos nós estão piscando em código.'
+    'as luzes dos nós estão piscando em código.',
+    'o rádio captou uma respiração. não era a sua.',
+    'ele já esteve dentro do seu acampamento.',
+    'a nave está quente. algo saiu dela há pouco.',
+    'contagem de pessoas no setor: uma a mais.',
+    '...pare de digitar. ele está ouvindo o ritmo...',
+    'as coordenadas mudam quando ninguém olha.',
+    'o chão do impacto ainda pulsa.',
+    'você sente o cheiro de metal queimado? ele está perto.',
+    'ALERTA: ASSINATURA BIOLÓGICA NÃO HUMANA NO CANAL',
+    'a floresta imitou a sua voz agora há pouco.',
+    'alguém do seu time já não é quem parece ser.',
+    'ele deixa o rádio ligado para ouvir vocês planejarem.',
+    'não acenda nada. o escuro é o único abrigo.',
+    'o tempo neste canal passa mais devagar.',
+    'as árvores viraram na direção do seu grupo.',
+    'ele não corre. ele não precisa.',
+    'RELATÓRIO PERDIDO: 3 OPERADORES NÃO RESPONDERAM',
+    'há marcas de garras do lado de dentro da fuselagem.',
+    'a estática chorou por um segundo.',
+    'não confie no sinal que responde rápido demais.',
+    'o vulto no fim do campo não está no mapa.',
+    'ele escolheu quem vai levar primeiro.',
+    '...o terminal também está sendo vigiado...',
+    'algo mudou de lugar enquanto você lia isto.',
+    'a lama perto da nave tem pegadas que apontam para dentro.',
+    'FALHA DE ENERGIA: ALGO ESTÁ SE ALIMENTANDO DA REDE',
+    'o silêncio do rádio durou exatamente 13 segundos.',
+    'não diga o nome dele em voz alta.',
+    'as câmeras do campo registraram uma sombra a mais.',
+    'vocês estão fazendo exatamente o que ele quer.',
+    'a nave está chamando. você também ouviu?',
+    'quem conta as tentativas erradas não é você.',
+    'o mato sussurra as suas senhas.',
+    'ele aprende a cada tentativa. cada erro ensina.',
+    'a porta da nave abriu por dentro.',
+    'há olhos onde a luz do canal não alcança.',
+    'ninguém consegue lembrar quem foi o último a chegar.',
+    'ele está atrás da próxima árvore. e da próxima.',
+    'o sinal vem de baixo da terra.'
   ];
   // Sorteio sem repetição: embaralha todas as frases e só reembaralha depois
   // de mostrar cada uma (sem repetir a última na virada). A "sacola" fica fora
@@ -342,7 +382,7 @@
       if (el.overlay.hidden || el.term.hidden) return;
       dizer(proximoSussurro(), 'en-whisper', true);
       agendarSussurro();
-    }, 14000 + Math.random() * 14000);
+    }, INTERVALO_SUSSURRO_MS);
   }
 
   function relogio() {
