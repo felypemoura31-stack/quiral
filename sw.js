@@ -1,6 +1,7 @@
-const CACHE_NAME = 'quiral-shell-v1';
+const CACHE_NAME = 'quiral-shell-v2';
 const SHELL_FILES = [
   './index.html',
+  './enigma.js',
   './manifest.json',
   './icon.svg',
   './notification.mp3'
