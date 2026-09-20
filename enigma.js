@@ -45,6 +45,25 @@
   function lerLS(chave) { try { return JSON.parse(localStorage.getItem(chave)) || {}; } catch (e) { return {}; } }
   function gravarLS(chave, obj) { try { localStorage.setItem(chave, JSON.stringify(obj)); } catch (e) { /* modo privado */ } }
 
+  // O progresso é guardado POR TIME (o time vem da sessão do site): o que o azul
+  // decifra não abre para o amarelo, mesmo no mesmo aparelho.
+  function chaveProgresso() {
+    let time = 'visitante';
+    try {
+      const s = JSON.parse(sessionStorage.getItem('quiral_session'));
+      if (s) time = s.team || (s.role === 'admin' ? 'admin' : 'visitante');
+    } catch (e) { /* sem sessão */ }
+    return LS_PLAYER + '_' + time;
+  }
+  // Progresso do time atual. Se o admin reiniciou o enigma (cfg.rev mudou desde
+  // que este progresso foi salvo), ele volta do zero.
+  function estadoAtual(cfg) {
+    const rev = (cfg && cfg.rev) || 0;
+    const s = lerLS(chaveProgresso());
+    if ((s.rev || 0) !== rev) { const novo = { rev }; gravarLS(chaveProgresso(), novo); return novo; }
+    return s;
+  }
+
   async function buscarConfig() {
     const res = await fetch(CFG_URL + '?nocache=' + Date.now());
     if (!res.ok) throw new Error('http ' + res.status);
@@ -396,7 +415,7 @@
     el.log.textContent = ''; ficha++; fila = Promise.resolve();
     relogio();
     // revalida os códigos já resolvidos neste aparelho contra a configuração atual
-    const salvo = lerLS(LS_PLAYER);
+    const salvo = estadoAtual(cfg);
     achados = {};
     let mudou = false;
     for (const tipo of ['coord', 'areas']) {
@@ -406,7 +425,7 @@
       if (t !== null) achados[tipo] = { codigo: cod, texto: t };
       else { delete salvo.achados[tipo]; mudou = true; }
     }
-    if (mudou) gravarLS(LS_PLAYER, salvo);
+    if (mudou) gravarLS(chaveProgresso(), salvo);
     desenharAchados();
 
     dizer('CONEXÃO ESTABELECIDA.', 'en-ok');
@@ -432,7 +451,7 @@
       if (!cfg || !cfg.gate) { estadoPortao('CANAL SEM SINAL. Volte mais tarde.', true); return; }
       const t = await decifrar(codigo, cfg.gate);
       if (t === MARCA_PORTAO) {
-        const salvo = lerLS(LS_PLAYER); salvo.portao = codigo; gravarLS(LS_PLAYER, salvo);
+        const salvo = estadoAtual(cfg); salvo.portao = codigo; gravarLS(chaveProgresso(), salvo);
         estadoPortao('ACESSO CONCEDIDO.', false);
         setTimeout(() => entrarNoTerminal(cfg), reduceMotion ? 0 : 700);
       } else {
@@ -456,7 +475,7 @@
         if (t === null) continue;
         const novo = !achados[tipo];
         achados[tipo] = { codigo: bruto, texto: t };
-        const salvo = lerLS(LS_PLAYER); salvo.achados = salvo.achados || {}; salvo.achados[tipo] = bruto; gravarLS(LS_PLAYER, salvo);
+        const salvo = estadoAtual(cfg); salvo.achados = salvo.achados || {}; salvo.achados[tipo] = bruto; gravarLS(chaveProgresso(), salvo);
         desenharAchados();
         if (tipo === 'coord') {
           dizer(novo ? 'DECIFRADO. SINAL DE IMPACTO TRIANGULADO...' : 'CHAVE JÁ ACEITA. REEXIBINDO DADOS.', 'en-ok');
@@ -483,13 +502,13 @@
     el.gateInput.value = ''; estadoPortao('', false);
     iniciarChuva(el.rain);
     // se este aparelho já passou pelo portão, tenta reentrar direto
-    const salvo = lerLS(LS_PLAYER);
-    if (salvo.portao) {
+    if (lerLS(chaveProgresso()).portao) {
       estadoPortao('reconectando...', false);
       try {
         const cfg = await buscarConfig();
-        if (cfg && cfg.gate && (await decifrar(salvo.portao, cfg.gate)) === MARCA_PORTAO) { estadoPortao('', false); entrarNoTerminal(cfg); return; }
-        delete salvo.portao; delete salvo.achados; gravarLS(LS_PLAYER, salvo);
+        const salvo = estadoAtual(cfg);
+        if (salvo.portao && cfg && cfg.gate && (await decifrar(salvo.portao, cfg.gate)) === MARCA_PORTAO) { estadoPortao('', false); entrarNoTerminal(cfg); return; }
+        delete salvo.portao; delete salvo.achados; gravarLS(chaveProgresso(), salvo);
       } catch (e) { /* sem rede: cai para o portão */ }
       estadoPortao('', false);
     }
@@ -511,9 +530,9 @@
     const m = document.createElement('div');
     m.id = 'en-admin';
     m.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-[3500] hidden';
-    const campo = 'w-full bg-black border border-gray-600 rounded p-2 text-white text-sm focus:border-green-500 focus:outline-none';
+    const campo = 'w-full bg-black border border-gray-600 rounded p-2 text-white text-sm focus:border-green-500 focus:outline-none resize-y';
     m.innerHTML =
-      '<div class="bg-gray-900 border border-gray-700 p-5 rounded-lg shadow-2xl max-w-lg mx-4 w-full max-h-[90vh] overflow-y-auto">' +
+      '<div class="bg-gray-900 border border-gray-700 p-5 rounded-lg shadow-2xl max-w-lg mx-4 w-full max-h-[90vh] overflow-y-auto overflow-x-hidden">' +
         '<h3 class="text-lg text-green-400 mb-1 font-bold text-center">☠ CONFIGURAR ENIGMA</h3>' +
         '<p class="text-[11px] text-gray-500 mb-3 text-center">As mesmas senhas valem para os dois times. Tudo é gravado cifrado no Firebase.</p>' +
         '<div class="space-y-3">' +
@@ -526,8 +545,9 @@
         '</div>' +
         '<p id="en-a-status" class="text-xs mt-3 min-h-[16px] text-center text-gray-400"></p>' +
         '<div class="flex flex-wrap justify-between gap-2 mt-2">' +
-          '<button type="button" id="en-a-off" class="px-3 py-2 bg-red-950 hover:bg-red-900 text-red-300 rounded text-xs border border-red-800">DESATIVAR</button>' +
-          '<div class="flex gap-2"><button type="button" id="en-a-cancel" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded font-bold border border-gray-600">CANCELAR</button>' +
+          '<div class="flex flex-wrap gap-2"><button type="button" id="en-a-reset" class="px-3 py-2 bg-yellow-950 hover:bg-yellow-900 text-yellow-300 rounded text-xs border border-yellow-800">REINICIAR PROGRESSO</button>' +
+          '<button type="button" id="en-a-off" class="px-3 py-2 bg-red-950 hover:bg-red-900 text-red-300 rounded text-xs border border-red-800">DESATIVAR</button></div>' +
+          '<div class="flex flex-wrap gap-2"><button type="button" id="en-a-cancel" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded font-bold border border-gray-600">CANCELAR</button>' +
           '<button type="button" id="en-a-save" class="px-4 py-2 bg-green-900 hover:bg-green-800 text-white rounded font-bold border border-green-600">SALVAR</button></div>' +
         '</div>' +
       '</div>';
@@ -535,6 +555,7 @@
     m.querySelector('#en-a-cancel').addEventListener('click', fecharAdmin);
     m.querySelector('#en-a-save').addEventListener('click', salvarAdmin);
     m.querySelector('#en-a-off').addEventListener('click', desativarAdmin);
+    m.querySelector('#en-a-reset').addEventListener('click', reiniciarAdmin);
   }
   const $a = (id) => document.getElementById(id);
   function statusAdmin(t, cor) { const s = $a('en-a-status'); s.textContent = t; s.className = 'text-xs mt-3 min-h-[16px] text-center ' + (cor || 'text-gray-400'); }
@@ -559,7 +580,9 @@
     const btn = $a('en-a-save'); btn.disabled = true; statusAdmin('cifrando e salvando...', 'text-gray-400');
     try {
       const [gate, coord, areas] = await Promise.all([cifrar(v.gate, MARCA_PORTAO), cifrar(v.s2, v.coord), cifrar(v.s3, v.areas)]);
-      const corpo = { gate, coord, areas, ts: Date.now() };
+      let rev = 0;
+      try { const atual = await buscarConfig(); rev = (atual && atual.rev) || 0; } catch (e) { /* mantém 0 */ }
+      const corpo = { gate, coord, areas, ts: Date.now(), rev };
       if (v.msg) corpo.msg = v.msg;
       const res = await fetch(CFG_URL, { method: 'PUT', body: JSON.stringify(corpo) });
       if (!res.ok) throw new Error('http ' + res.status);
@@ -568,6 +591,21 @@
       if (typeof mostrarToast === 'function') mostrarToast('Enigma salvo');
     } catch (e) { statusAdmin('Falha ao salvar no Firebase. Tente de novo.', 'text-red-400'); }
     finally { btn.disabled = false; }
+  }
+
+  // Reinicia o enigma para TODOS: muda o "rev" no Firebase, e cada aparelho
+  // descarta o próprio progresso na próxima vez que abrir o terminal.
+  async function reiniciarAdmin() {
+    if (!confirm('Reiniciar o enigma? Azul e amarelo terão que decifrar tudo de novo (portão, coordenadas e áreas).')) return;
+    try {
+      const atual = await buscarConfig();
+      if (!atual) { statusAdmin('Nada configurado para reiniciar.', 'text-yellow-400'); return; }
+      const res = await fetch(CFG_URL, { method: 'PATCH', body: JSON.stringify({ rev: Date.now() }) });
+      if (!res.ok) throw new Error('http ' + res.status);
+      try { Object.keys(localStorage).filter((k) => k.indexOf(LS_PLAYER) === 0).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignora */ }
+      statusAdmin('Enigma reiniciado: todos os times precisam decifrar de novo.', 'text-green-400');
+      if (typeof mostrarToast === 'function') mostrarToast('Enigma reiniciado');
+    } catch (e) { statusAdmin('Falha ao reiniciar. Tente de novo.', 'text-red-400'); }
   }
 
   async function desativarAdmin() {
